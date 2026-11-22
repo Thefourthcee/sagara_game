@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>sagara</title>
+<style>
+:root{--bg:#000;--fg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#000;--fg:#fff}}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:"Courier New",monospace}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+canvas{width:min(96vw,640px);aspect-ratio:4/3;image-rendering:pixelated;border:2px solid #fff;background:#000}
+.hint{font-size:13px;opacity:.8;text-align:center;padding:0 8px}
+.pad{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(2,52px);gap:6px}
+.pad button,.act{background:#000;color:#fff;border:2px solid #fff;font:20px "Courier New",monospace;touch-action:none}
+.act{width:110px;height:52px}
+.touch{display:none;gap:20px;align-items:center}
+@media (pointer:coarse){.touch{display:flex}}
+</style>
+</head>
+<body>
+<canvas id="c" width="320" height="240"></canvas>
+<div class="hint">Arrow keys / WASD: move &nbsp;â€¢&nbsp; Z / Enter: interact &nbsp;â€¢&nbsp; Top doors: change room &nbsp;â€¢&nbsp; 1-4: warp &nbsp;â€¢&nbsp; Esc: map &nbsp;â€¢&nbsp; Diagonals work like Undertale</div>
+<div class="touch">
+  <div class="pad">
+    <span></span><button data-k="ArrowUp">â–²</button><span></span>
+    <button data-k="ArrowLeft">â—€</button><button data-k="ArrowDown">â–¼</button><button data-k="ArrowRight">â–¶</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px"><button class="act" data-k="z">Z</button><button class="act" data-k="Escape">Map</button></div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+// ---- Input: later key press takes priority per axis, like Undertale ----
+const held=[];
+const map={ArrowUp:'u',w:'u',W:'u',ArrowDown:'d',s:'d',S:'d',ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r'};
+let interact=false;
+let mapPress=false,mapOpen=false;
+function down(k,rep){
+  if(k==='Escape'||k==='m'||k==='M'){if(!rep)mapPress=true;return true}
+  if(map[k]){const m=map[k];const i=held.indexOf(m);if(i>=0)held.splice(i,1);held.push(m);return true}
+  if(k==='z'||k==='Z'||k==='Enter'){interact=true;return true}
+  return false;
+}
+function up(k){
+  if(map[k]){const i=held.indexOf(map[k]);if(i>=0)held.splice(i,1)}
+}
+addEventListener('keydown',e=>{if(down(e.key,e.repeat)){e.preventDefault()}});
+addEventListener('keyup',e=>up(e.key));
+document.querySelectorAll('[data-k]').forEach(b=>{
+  const k=b.dataset.k;
+  b.addEventListener('pointerdown',e=>{e.preventDefault();down(k)});
+  ['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,()=>up(k)));
+});
+
+// ---- Baghdad, c. 800 CE: a family house around a courtyard ----
+const NAMES={1:'Kitchen',2:'Yard',3:'Living',4:'My Room'};
+const TITLES={1:'The Kitchen',2:'The Courtyard',3:'The Majlis (Living Room)',4:'Your Room'};
+const ROOMS={
+ 1:{floor:['#a8683a','#9a5c32'],wall:['#e0c896','#c4a56c'],acc:'#2f7a86',win:'#16304a',
+  deco:[{k:'rug',x:92,y:118,w:100,h:80,c:['#7a1f2f','#d9b44a','#2f7a86']}],
+  objs:[{k:'oven',x:236,y:96,w:50,h:46},{k:'table',x:104,y:142,w:76,h:32},{k:'pots',x:22,y:100,w:26,h:28},{k:'pots',x:26,y:176,w:26,h:28},
+   {k:'mom',x:196,y:124,w:16,h:8,talk:'* Good morning, my son.\n* The bread is fresh from the\n  tannur. Eat before you go.'}]},
+ 2:{floor:['#d6bd84','#cbb078'],wall:['#c9a46a','#a98448'],acc:'#2f7a86',win:'#7fc4e8',deco:[],
+  objs:[{k:'fountain',x:128,y:130,w:64,h:48,talk:'* The fountain water is cool.\n* A breeze rustles the palms.'},
+   {k:'palm',x:34,y:124,w:16,h:8},{k:'palm',x:268,y:196,w:16,h:8},{k:'palm',x:262,y:112,w:16,h:8},{k:'pots',x:40,y:190,w:26,h:28}]},
+ 3:{floor:['#7a2230','#6a1c29'],wall:['#ead9ab','#cdb57e'],acc:'#a33b2b',win:'#16304a',
+  deco:[{k:'rug',x:80,y:98,w:160,h:104,c:['#2f6f78','#d9b44a','#7a1f2f']}],
+  objs:[{k:'divan',x:16,y:96,w:30,h:96},{k:'divan',x:70,y:206,w:130,h:20},{k:'table',x:130,y:138,w:60,h:34},
+   {k:'shelf',x:252,y:96,w:42,h:34,talk:'* A book from the House of\n  Wisdom rests on the shelf.'}]},
+ 4:{floor:['#8a6a48','#7d5f3f'],wall:['#3a8a94','#2a6a74'],acc:'#d9b44a',win:'#16304a',
+  deco:[{k:'rug',x:116,y:112,w:100,h:58,c:['#a33b2b','#d9b44a','#2f6f78']}],
+  objs:[{k:'bed',x:236,y:98,w:70,h:44},{k:'chest',x:20,y:100,w:36,h:26},{k:'lamp',x:26,y:190,w:14,h:16},
+   {k:'desk',x:100,y:192,w:64,h:26,talk:'* Your scrolls and reed pen.\n  You practice calligraphy.'}]}
+};
+const BORDER=[{x:0,y:0,w:320,h:70},{x:0,y:230,w:320,h:10},{x:0,y:0,w:10,h:240},{x:310,y:0,w:10,h:240}];
+function doorsOf(id){return [1,2,3,4].filter(i=>i!==id).map((to,k)=>({x:40+k*100,y:70,w:40,h:6,to}))}
+let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null;
+const P={x:160,y:206,dir:'d',frame:0,tick:0,moving:false};
+function setRoom(id,from){
+  cur=id;room=ROOMS[id];doors=doorsOf(id);objs=room.objs;
+  const d=from?doors.find(d=>d.to===from):null;
+  if(d){P.x=d.x+20;P.y=86}else{P.x=160;P.y=206}
+  P.dir='d';banner=90;dlg=null;
+}
+const SPEED=3;           // px per frame @30fps, same as Frisk
+const ANIM_EVERY=5;      // game frames per walk-frame
+
+function box(x,y){return{x:x-7,y:y-6,w:14,h:6}}
+function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function blocked(x,y){
+  const b=box(x,y);
+  for(const w of BORDER)if(hit(b,w))return true;
+  for(const o of objs)if(hit(b,o))return true;
+  return false;
+}
+function talkAhead(){
+  const b=box(P.x,P.y);let f;
+  if(P.dir==='u')f={x:b.x-2,y:b.y-14,w:b.w+4,h:14};
+  else if(P.dir==='d')f={x:b.x-2,y:b.y+b.h,w:b.w+4,h:14};
+  else if(P.dir==='l')f={x:b.x-14,y:b.y-6,w:14,h:b.h+8};
+  else f={x:b.x+b.w,y:b.y-6,w:14,h:b.h+8};
+  return objs.find(o=>o.talk&&hit(f,o));
+}
+addEventListener('keydown',e=>{const n=+e.key;if(n>=1&&n<=4&&!T&&!mapOpen&&n!==cur)T={f:0,to:n,from:cur}});
+
+function update(){
+  if(banner>0)banner--;
+  if(mapPress){mapPress=false;if(!T&&!dlg)mapOpen=!mapOpen}
+  if(mapOpen){interact=false;P.moving=false;return}
+  if(T){T.f++;if(T.f===8)setRoom(T.to,T.from);if(T.f>=16)T=null;interact=false;return}
+  if(dlg){
+    const m=dlg.text;
+    if(!dlg.done){dlg.shown=Math.min(m.length,dlg.shown+1);if(dlg.shown>=m.length)dlg.done=true}
+    if(interact){if(dlg.done)dlg=null;else{dlg.shown=m.length;dlg.done=true}}
+    interact=false;P.moving=false;return;
+  }
+  let dx=0,dy=0;
+  for(const k of held){if(k==='l')dx=-1;if(k==='r')dx=1;if(k==='u')dy=-1;if(k==='d')dy=1}
+  const li=held.lastIndexOf('l'),ri=held.lastIndexOf('r');
+  if(li>=0&&ri>=0)dx=li>ri?-1:1;
+  const ui=held.lastIndexOf('u'),di=held.lastIndexOf('d');
+  if(ui>=0&&di>=0)dy=ui>di?-1:1;
+  P.moving=dx!==0||dy!==0;
+  if(dx<0)P.dir='l';else if(dx>0)P.dir='r';else if(dy<0)P.dir='u';else if(dy>0)P.dir='d';
+  if(dx&&!blocked(P.x+dx*SPEED,P.y))P.x+=dx*SPEED;
+  if(dy&&!blocked(P.x,P.y+dy*SPEED))P.y+=dy*SPEED;
+  if(P.moving){P.tick++;if(P.tick>=ANIM_EVERY){P.tick=0;P.frame=(P.frame+1)%4}}
+  else{P.frame=0;P.tick=0}
+  const b=box(P.x,P.y);
+  for(const d of doors)if(hit(b,d)){T={f:0,to:d.to,from:cur};break}
+  if(interact){const t=talkAhead();if(t)dlg={text:t.talk,shown:0,done:false}}
+  interact=false;
+}
+
+// ---- Drawing (shapes only) ----
+function R(c,x,y,w,h){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function C(c,x,y,r){ctx.fillStyle=c;ctx.beginPath();ctx.arc(Math.round(x),Math.round(y),r,0,7);ctx.fill()}
+function E(c,x,y,rx,ry){ctx.fillStyle=c;ctx.beginPath();ctx.ellipse(Math.round(x),Math.round(y),rx,ry,0,0,7);ctx.fill()}
+function arch(c,x,w,top,bot){ctx.fillStyle=c;ctx.beginPath();ctx.moveTo(x,bot);ctx.lineTo(x,top);ctx.arc(x+w/2,top,w/2,Math.PI,0);ctx.lineTo(x+w,bot);ctx.fill()}
+
+function drawPlayer(){
+  const x=Math.round(P.x),y=Math.round(P.y);
+  const f=P.frame,step=(f===1||f===3),bob=step?1:0,legA=f===1?-2:f===3?2:0;
+  const sx=x-8,sy=y-30-bob;
+  const skin='#c68a58',robe='#f1e6c8',shade='#d8c9a0',sash='#a33b2b',turb='#f7f3e6',dark='#2a1a10';
+  // sandals peeking under the thobe
+  if(P.dir==='l'||P.dir==='r'){R('#6b4a2a',sx+4+legA,sy+27+bob,5,3);R('#6b4a2a',sx+9-legA,sy+27+bob,5,3)}
+  else{R('#6b4a2a',sx+3,sy+27+bob+(legA>0?-1:0),5,3);R('#6b4a2a',sx+9,sy+27+bob+(legA<0?-1:0),5,3)}
+  // long thobe with gold hem and red sash
+  R(robe,sx+2,sy+14,12,14);R(shade,sx+2,sy+14,2,14);
+  R('#d9b44a',sx+2,sy+26,12,2);R(sash,sx+2,sy+20,12,3);
+  // sleeves + hands
+  if(P.dir==='l'||P.dir==='r'){R(robe,sx+6,sy+15,5,8+(step?1:0));R(skin,sx+6,sy+23+(step?1:0),4,2)}
+  else{R(robe,sx,sy+15,3,9);R(robe,sx+13,sy+15,3,9);R(skin,sx,sy+24,3,2);R(skin,sx+13,sy+24,3,2)}
+  // head
+  R(skin,sx+3,sy+4,10,10);
+  if(P.dir==='u'){R(turb,sx+1,sy,14,13);R('#e0d8c2',sx+1,sy+5,14,1);R('#e0d8c2',sx+1,sy+9,14,1)}
+  else{
+    R(turb,sx+1,sy,14,6);R('#e0d8c2',sx+1,sy+3,14,1);R(turb,sx+2,sy-1,12,2);
+    R(dark,sx+2,sy+5,2,4);R(dark,sx+12,sy+5,2,4); // hair at the sides
+    if(P.dir==='l'){R(turb,sx+9,sy+5,6,8);R(skin,sx+9,sy+5,0,0)}
+    if(P.dir==='r'){R(turb,sx+1,sy+5,6,8)}
+  }
+  if(P.dir==='d'){R(dark,sx+4,sy+7,3,1);R(dark,sx+9,sy+7,3,1);R(dark,sx+5,sy+9,1,2);R(dark,sx+10,sy+9,1,2);R('#9a5a38',sx+7,sy+11,2,1)}
+  if(P.dir==='l'){R(dark,sx+3,sy+7,3,1);R(dark,sx+4,sy+9,1,2)}
+  if(P.dir==='r'){R(dark,sx+10,sy+7,3,1);R(dark,sx+11,sy+9,1,2)}
+}
+function drawMom(o){
+  const sx=o.x+8-8,sy=o.y+8-30;
+  R('#6b4a2a',sx+3,sy+27,5,3);R('#6b4a2a',sx+9,sy+27,5,3);
+  R('#b0473b',sx+1,sy+13,14,15);R('#d9b44a',sx+1,sy+26,14,2);
+  R('#f4efe2',sx+4,sy+18,8,10);R('#2f7a86',sx+4,sy+18,8,2);
+  R('#b0473b',sx-1,sy+15,3,9);R('#b0473b',sx+14,sy+15,3,9);R('#c68a58',sx-1,sy+24,3,2);R('#c68a58',sx+14,sy+24,3,2);
+  R('#c68a58',sx+4,sy+4,8,9);
+  R('#6a2f7a',sx+1,sy,14,5);R('#6a2f7a',sx+1,sy+3,4,13);R('#6a2f7a',sx+11,sy+3,4,13);R('#8a4a9a',sx+2,sy+1,12,1);
+  R('#2a1a10',sx+5,sy+7,2,2);R('#2a1a10',sx+9,sy+7,2,2);R('#a0483a',sx+7,sy+11,2,1);
+}
+function drawRug(o){
+  const c=o.c;R(c[0],o.x,o.y,o.w,o.h);R(c[1],o.x+4,o.y+4,o.w-8,o.h-8);R(c[0],o.x+7,o.y+7,o.w-14,o.h-14);
+  const cx=o.x+o.w/2,cy=o.y+o.h/2;R(c[2],cx-14,cy-2,28,4);R(c[2],cx-2,cy-14,4,28);R(c[1],cx-5,cy-5,10,10);
+  for(let i=o.x+10;i<o.x+o.w-10;i+=10){R(c[1],i,o.y+1,3,2);R(c[1],i,o.y+o.h-3,3,2)}
+}
+function drawObj(o){
+  const{x,y,w,h}=o;
+  switch(o.k){
+  case 'oven':R('#8a4a2a',x,y+14,w,h-14);C('#9b5632',x+w/2,y+20,w/2-2);R('#9b5632',x+2,y+20,w-4,h-20);
+    R('#c07a48',x+4,y+22,w-8,2);R('#150a05',x+w/2-9,y+h-18,18,14);R('#e8742a',x+w/2-5,y+h-11,10,6);break;
+  case 'table':R('#5a3a1c',x+3,y+h-8,6,8);R('#5a3a1c',x+w-9,y+h-8,6,8);R('#8a5a2f',x,y,w,h-6);R('#a8743c',x,y,w,3);
+    C('#f4e8c8',x+16,y+11,6);C('#c98f4a',x+16,y+11,4);C('#f4e8c8',x+w-20,y+10,5);C('#2f7a86',x+w/2,y+12,4);break;
+  case 'pots':E('#b5683a',x+w/2,y+h-11,w/2-2,11);R('#b5683a',x+7,y+3,w-14,8);R('#150a05',x+7,y+3,w-14,3);R('#d9b44a',x+3,y+h-14,w-6,2);break;
+  case 'fountain':E('#a89878',x+w/2,y+h/2+3,w/2,h/2-2);E('#c8b898',x+w/2,y+h/2,w/2,h/2-3);E('#3a9ad0',x+w/2,y+h/2,w/2-6,h/2-9);
+    R('#c8b898',x+w/2-4,y+8,8,h/2-4);C('#7fd0f0',x+w/2,y+6,4);R('#7fd0f0',x+w/2-1,y+10,2,10);break;
+  case 'palm':R('#7a5230',x+6,y-34,4,42);R('#5a3a1c',x+6,y-22,4,1);R('#5a3a1c',x+6,y-12,4,1);
+    E('#2f7a3a',x+8-10,y-30,10,4);E('#2f7a3a',x+8+10,y-30,10,4);E('#3a8a44',x+8,y-38,4,9);C('#3a8a44',x+8,y-33,6);C('#8a4a1a',x+4,y-27,2);C('#8a4a1a',x+12,y-27,2);break;
+  case 'divan':R('#5a1a24',x,y,w,h);R('#c9a43a',x,y,w,2);R('#c9a43a',x,y+h-2,w,2);
+    if(w>h){for(let i=6;i<w-12;i+=26){R(i%2?'#2f7a86':'#d9b44a',x+i,y+4,18,h-8)}}else{for(let j=6;j<h-12;j+=26){R(j%2?'#2f7a86':'#d9b44a',x+4,y+j,w-8,18)}}break;
+  case 'shelf':R('#6b4423',x,y,w,h);R('#4a2c14',x+2,y+2,w-4,h-4);
+    for(let i=0;i<4;i++){R(['#e8dcb8','#c9a43a','#2f7a86','#a33b2b'][i],x+4+i*9,y+4,7,10);R(['#a33b2b','#e8dcb8','#c9a43a','#2f7a86'][i],x+4+i*9,y+18,7,10)}break;
+  case 'bed':R('#6b4423',x,y,w,h);R('#e8dcb8',x+3,y+3,w-6,h-6);R('#2f6f78',x+22,y+3,w-25,h-6);R('#d9b44a',x+22,y+3,3,h-6);R('#f7f3e6',x+5,y+7,14,h-14);break;
+  case 'chest':R('#6b3f1f',x,y,w,h);R('#8a5a2f',x,y,w,5);R('#c9a43a',x+2,y+h/2-1,w-4,3);R('#c9a43a',x+w/2-3,y+h/2-4,6,7);break;
+  case 'desk':R('#5a3a1c',x+3,y+h-8,6,8);R('#5a3a1c',x+w-9,y+h-8,6,8);R('#8a5a2f',x,y,w,h-6);R('#e8dcb8',x+6,y+4,20,8);R('#c9a43a',x+6,y+4,2,8);
+    C('#111',x+w-14,y+8,3);R('#4a2c14',x+w-24,y+3,1,9);break;
+  case 'lamp':R('#c9a43a',x+3,y+8,8,8);R('#a88a2a',x+1,y+14,12,2);C('#ffd25a',x+7,y+5,3);break;
+  case 'mom':drawMom(o);break;
+  }
+}
+function drawMap(){
+  R('#000',0,0,320,240);R('#d9b44a',6,6,308,228);R('#1a1208',9,9,302,222);
+  ctx.textBaseline='top';ctx.textAlign='center';ctx.font='bold 14px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('MAP OF THE HOUSE',160,18);
+  const pos={1:[40,52],2:[190,52],3:[40,140],4:[190,140]},W=90,H=60;
+  const LBL={1:'Kitchen',2:'Yard',3:'Living Room',4:'Your Room'};
+  ctx.strokeStyle='#8a6a2a';ctx.lineWidth=2;
+  for(let a=1;a<=4;a++)for(let b=a+1;b<=4;b++){ctx.beginPath();ctx.moveTo(pos[a][0]+W/2,pos[a][1]+H/2);ctx.lineTo(pos[b][0]+W/2,pos[b][1]+H/2);ctx.stroke()}
+  for(let i=1;i<=4;i++){
+    const x=pos[i][0],y=pos[i][1],here=i===cur;
+    R(here?'#ffd25a':'#d9b44a',x-3,y-3,W+6,H+6);R(ROOMS[i].floor[0],x,y,W,H);R(ROOMS[i].wall[0],x,y,W,12);R(ROOMS[i].acc,x,y+12,W,2);
+    R('#241408',x+W/2-6,y+2,12,10);
+    ctx.font='bold 11px monospace';ctx.fillStyle='#fff';ctx.fillText(LBL[i],x+W/2,y+H/2-2);
+    if(here){C('#ff3b3b',x+8+(P.x/320)*(W-16),y+14+((P.y-70)/160)*(H-20),4);ctx.fillStyle='#ffd25a';ctx.font='bold 9px monospace';ctx.fillText('YOU ARE HERE',x+W/2,y+H+6)}
+  }
+  ctx.font='bold 10px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('All rooms connect by their top doors',160,200);ctx.fillText('Esc / M: close',160,216);
+  ctx.textAlign='left';
+}
+function draw(){
+  R('#000',0,0,320,240);
+  R(room.floor[0],10,70,300,160);
+  for(let i=0;i<300;i+=20)for(let j=0;j<160;j+=20)if(((i+j)/20)%2===0)R(room.floor[1],10+i,70+j,20,20);
+  for(const d of room.deco)drawRug(d);
+  // walls with a geometric band (arabesque-style stars)
+  R(room.wall[0],0,0,320,70);R(room.wall[1],0,62,320,8);
+  R(room.wall[0],0,230,320,10);R(room.wall[0],0,0,10,240);R(room.wall[0],310,0,10,240);
+  for(let x=6;x<320;x+=14){R(room.acc,x+2,6,2,6);R(room.acc,x,8,6,2)}
+  R(room.acc,0,18,320,2);R(room.acc,0,66,320,2);
+  // arched lattice windows
+  for(const wx of [96,196]){
+    arch(room.wall[1],wx-3,30,36,60);arch(room.win,wx,24,38,58);
+    R('#e8dcb8',wx+11,38,2,20);R('#e8dcb8',wx,46,24,2);R('#e8dcb8',wx+4,32,16,2);
+  }
+  // horseshoe-arch doorways to the other rooms
+  ctx.font='bold 8px "Courier New",monospace';ctx.textBaseline='top';
+  for(const d of doors){
+    arch('#d9b44a',d.x-3,d.w+6,44,70);arch('#241408',d.x,d.w,44,70);
+    ctx.fillStyle='#fff';ctx.fillText(NAMES[d.to],d.x+Math.round((d.w-NAMES[d.to].length*4.8)/2),58);
+  }
+  // objects sorted by depth, with the player in between
+  const sorted=objs.slice().sort((a,b)=>(a.y+a.h)-(b.y+b.h));
+  for(const o of sorted)if(o.y+o.h<=P.y)drawObj(o);
+  drawPlayer();
+  for(const o of sorted)if(o.y+o.h>P.y)drawObj(o);
+  if(banner>0){R('#000',8,206,200,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
+  if(dlg){
+    R('#fff',16,150,288,80);R('#000',20,154,280,72);
+    ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New",monospace';ctx.textBaseline='top';
+    dlg.text.slice(0,dlg.shown).split('\n').forEach((l,i)=>ctx.fillText(l,30,160+i*20));
+  }
+  if(mapOpen)drawMap();
+  if(T){ctx.globalAlpha=T.f<8?T.f/8:(16-T.f)/8;R('#000',0,0,320,240);ctx.globalAlpha=1}
+}
+
+// ---- Fixed 30 FPS loop ----
+let last=performance.now(),acc=0;const STEP=1000/30;
+function loop(t){
+  acc+=t-last;last=t;
+  if(acc>250)acc=250;
+  while(acc>=STEP){update();acc-=STEP}
+  draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
