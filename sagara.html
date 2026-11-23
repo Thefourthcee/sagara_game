@@ -54,15 +54,32 @@ document.querySelectorAll('[data-k]').forEach(b=>{
 
 // ---- Baghdad, c. 800 CE: a family house around a courtyard ----
 const NAMES={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Cellar'};
-const TITLES={1:'The Kitchen',2:'The Courtyard',3:'The Majlis (Living Room)',4:'Your Room',5:'The Basement (Sirdab)'};
+const TITLES={1:'The Kitchen',2:'The Courtyard (Al-Fina)',3:'The Majlis (Living Room)',4:'Your Room',5:'The Basement (Sirdab)'};
 const ROOMS={
  1:{floor:['#a8683a','#9a5c32'],wall:['#e0c896','#c4a56c'],acc:'#2f7a86',win:'#16304a',
   deco:[{k:'rug',x:92,y:118,w:100,h:80,c:['#7a1f2f','#d9b44a','#2f7a86']}],
   objs:[{k:'oven',x:236,y:96,w:50,h:46},{k:'table',x:104,y:142,w:76,h:32},{k:'pots',x:22,y:100,w:26,h:28},{k:'pots',x:26,y:176,w:26,h:28},
    {k:'mom',x:196,y:124,w:16,h:8,talk:'* Good morning, my son.\n* The bread is fresh from the\n  tannur. Eat before you go.'}]},
- 2:{floor:['#d6bd84','#cbb078'],wall:['#c9a46a','#a98448'],acc:'#2f7a86',win:'#7fc4e8',deco:[],
-  objs:[{k:'fountain',x:128,y:130,w:64,h:48,talk:'* The fountain water is cool.\n* A breeze rustles the palms.'},
-   {k:'palm',x:34,y:124,w:16,h:8},{k:'palm',x:268,y:196,w:16,h:8},{k:'palm',x:262,y:112,w:16,h:8},{k:'pots',x:40,y:190,w:26,h:28}]},
+ 2:{yard:true,floor:['#dfc38a','#d2b479'],wall:['#c9a46a','#a98448'],acc:'#2f7a86',win:'#74bce8',
+  deco:[
+   {k:'tile_border',x:96,y:102,w:128,h:96,c:['#2f7a86','#d9b44a','#a33b2b']},
+   {k:'shade',x:18,y:166,w:76,h:52}
+  ],
+  objs:[
+   {k:'fountain',x:126,y:124,w:68,h:52,talk:'* Tigris water babbles in the\n  turquoise-tiled fountain.\n* Pomegranate petals float on top.'},
+   {k:'palm',x:34,y:118,w:16,h:8,talk:'* A tall Baghdad date palm,\n  heavy with golden khalal dates.'},
+   {k:'palm',x:274,y:114,w:16,h:8},
+   {k:'palm',x:272,y:198,w:16,h:8},
+   {k:'shrub',x:74,y:96,w:20,h:14,talk:'* Fragrant jasmine and bitter\n  orange blossoms line the wall.'},
+   {k:'shrub',x:226,y:96,w:20,h:14},
+   {k:'bench',x:22,y:186,w:46,h:20,talk:'* A woven palm-frond bench\n  resting in the cool shade.'},
+   {k:'cat',x:76,y:194,w:16,h:10,talks:[
+     '* Mrrp! A small ginger-and-white\n  Baghdadi street cat blinks up\n  at you in the palm shade.',
+     '* Purrrrr... It curls around\n  your sandals, hoping for warm\n  tannur bread from the kitchen.',
+     '* The little cat stretches its\n  paws and chases a stray leaf.'
+   ]},
+   {k:'pots',x:234,y:192,w:24,h:26,talk:'* Cool clay water jars (zir)\n  sweating in the warm breeze.'}
+  ]},
  3:{floor:['#7a2230','#6a1c29'],wall:['#ead9ab','#cdb57e'],acc:'#a33b2b',win:'#16304a',
   deco:[{k:'rug',x:80,y:98,w:160,h:104,c:['#2f6f78','#d9b44a','#7a1f2f']}],
   objs:[{k:'divan',x:16,y:96,w:30,h:96},{k:'divan',x:70,y:206,w:130,h:20},{k:'table',x:130,y:138,w:60,h:34},
@@ -85,7 +102,7 @@ const ROOMS={
 };
 const BORDER=[{x:0,y:0,w:320,h:70},{x:0,y:230,w:320,h:10},{x:0,y:0,w:10,h:240},{x:310,y:0,w:10,h:240}];
 function doorsOf(id){return [1,2,3,4,5].filter(i=>i!==id).map((to,k)=>({x:26+k*76,y:70,w:40,h:6,to}))}
-let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null,gTick=0;
+let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null,gTick=0,catPet=0;
 const P={x:160,y:206,dir:'d',frame:0,tick:0,moving:false};
 function setRoom(id,from){
   cur=id;room=ROOMS[id];doors=doorsOf(id);objs=room.objs;
@@ -110,7 +127,7 @@ function talkAhead(){
   else if(P.dir==='d')f={x:b.x-2,y:b.y+b.h,w:b.w+4,h:14};
   else if(P.dir==='l')f={x:b.x-14,y:b.y-6,w:14,h:b.h+8};
   else f={x:b.x+b.w,y:b.y-6,w:14,h:b.h+8};
-  return objs.find(o=>o.talk&&hit(f,o));
+  return objs.find(o=>(o.talk||o.talks)&&hit(f,o));
 }
 addEventListener('keydown',e=>{const n=+e.key;if(n>=1&&n<=5&&!T&&!mapOpen&&n!==cur)T={f:0,to:n,from:cur}});
 
@@ -140,7 +157,13 @@ function update(){
   else{P.frame=0;P.tick=0}
   const b=box(P.x,P.y);
   for(const d of doors)if(hit(b,d)){T={f:0,to:d.to,from:cur};break}
-  if(interact){const t=talkAhead();if(t)dlg={text:t.talk,shown:0,done:false}}
+  if(interact){
+    const t=talkAhead();
+    if(t){
+      const msg=t.talks?t.talks[catPet++%t.talks.length]:t.talk;
+      dlg={text:msg,shown:0,done:false,cat:!!t.talks};
+    }
+  }
   interact=false;
 }
 
@@ -155,21 +178,17 @@ function drawPlayer(){
   const f=P.frame,step=(f===1||f===3),bob=step?1:0,legA=f===1?-2:f===3?2:0;
   const sx=x-8,sy=y-30-bob;
   const skin='#c68a58',robe='#f1e6c8',shade='#d8c9a0',sash='#a33b2b',turb='#f7f3e6',dark='#2a1a10';
-  // sandals peeking under the thobe
   if(P.dir==='l'||P.dir==='r'){R('#6b4a2a',sx+4+legA,sy+27+bob,5,3);R('#6b4a2a',sx+9-legA,sy+27+bob,5,3)}
   else{R('#6b4a2a',sx+3,sy+27+bob+(legA>0?-1:0),5,3);R('#6b4a2a',sx+9,sy+27+bob+(legA<0?-1:0),5,3)}
-  // long thobe with gold hem and red sash
   R(robe,sx+2,sy+14,12,14);R(shade,sx+2,sy+14,2,14);
   R('#d9b44a',sx+2,sy+26,12,2);R(sash,sx+2,sy+20,12,3);
-  // sleeves + hands
   if(P.dir==='l'||P.dir==='r'){R(robe,sx+6,sy+15,5,8+(step?1:0));R(skin,sx+6,sy+23+(step?1:0),4,2)}
   else{R(robe,sx,sy+15,3,9);R(robe,sx+13,sy+15,3,9);R(skin,sx,sy+24,3,2);R(skin,sx+13,sy+24,3,2)}
-  // head
   R(skin,sx+3,sy+4,10,10);
   if(P.dir==='u'){R(turb,sx+1,sy,14,13);R('#e0d8c2',sx+1,sy+5,14,1);R('#e0d8c2',sx+1,sy+9,14,1)}
   else{
     R(turb,sx+1,sy,14,6);R('#e0d8c2',sx+1,sy+3,14,1);R(turb,sx+2,sy-1,12,2);
-    R(dark,sx+2,sy+5,2,4);R(dark,sx+12,sy+5,2,4); // hair at the sides
+    R(dark,sx+2,sy+5,2,4);R(dark,sx+12,sy+5,2,4);
     if(P.dir==='l'){R(turb,sx+9,sy+5,6,8)}
     if(P.dir==='r'){R(turb,sx+1,sy+5,6,8)}
   }
@@ -187,12 +206,68 @@ function drawMom(o){
   R('#6a2f7a',sx+1,sy,14,5);R('#6a2f7a',sx+1,sy+3,4,13);R('#6a2f7a',sx+11,sy+3,4,13);R('#8a4a9a',sx+2,sy+1,12,1);
   R('#2a1a10',sx+5,sy+7,2,2);R('#2a1a10',sx+9,sy+7,2,2);R('#a0483a',sx+7,sy+11,2,1);
 }
+function drawCat(o){
+  const x=o.x,y=o.y;
+  const tailWag=Math.sin(gTick*0.18)*2;
+  const purrBob=(dlg&&dlg.cat)?(gTick%6<3?-1:0):0;
+  // soft ground shadow
+  E('rgba(42,26,16,0.28)',x+8,y+8,8,3);
+  // curled tail
+  R('#d97a34',x+12,y+2+purrBob,3,4);
+  R('#d97a34',x+14,y-1+Math.round(tailWag)+purrBob,2,4);
+  R('#fff8eb',x+14,y-2+Math.round(tailWag)+purrBob,2,2);
+  // ginger & white body
+  E('#d97a34',x+8,y+4+purrBob,6,4.5);
+  E('#fff8eb',x+6,y+5+purrBob,3.5,3);
+  // front paws
+  R('#fff8eb',x+3,y+7,3,2);
+  R('#fff8eb',x+7,y+7,3,2);
+  // head
+  C('#d97a34',x+5,y+purrBob,4.2);
+  // white muzzle
+  R('#fff8eb',x+3,y+1+purrBob,4,2);
+  // pointed ears + inner pink
+  R('#d97a34',x+1,y-5+purrBob,2,3);
+  R('#d97a34',x+7,y-5+purrBob,2,3);
+  R('#e89a9a',x+2,y-4+purrBob,1,2);
+  R('#e89a9a',x+7,y-4+purrBob,1,2);
+  // eyes (happy closed arcs when purring in dialogue, green eyes otherwise)
+  if(dlg&&dlg.cat){
+    R('#2a1a10',x+2,y-1+purrBob,2,1);
+    R('#2a1a10',x+6,y-1+purrBob,2,1);
+  }else{
+    R('#3a9a5a',x+2,y-1+purrBob,2,2);
+    R('#3a9a5a',x+6,y-1+purrBob,2,2);
+    R('#111',x+3,y-1+purrBob,1,2);
+    R('#111',x+7,y-1+purrBob,1,2);
+  }
+  // pink nose
+  R('#e88a8a',x+4,y+1+purrBob,2,1);
+}
 function drawRug(o){
   const c=o.c;
   if(o.k==='mat'){
     R(c[0],o.x,o.y,o.w,o.h);
     for(let y=o.y+4;y<o.y+o.h-2;y+=6)R(c[1],o.x+2,y,o.w-4,2);
     for(let x=o.x+6;x<o.x+o.w-4;x+=12)R(c[1],x,o.y+2,2,o.h-4);
+    return;
+  }
+  if(o.k==='tile_border'){
+    // Baghdadi turquoise & gold geometric mosaic courtyard apron around the fountain
+    R(c[0],o.x,o.y,o.w,o.h);
+    R(c[1],o.x+3,o.y+3,o.w-6,o.h-6);
+    R('#e6cf9c',o.x+6,o.y+6,o.w-12,o.h-12);
+    for(let ix=o.x+10;ix<o.x+o.w-12;ix+=12){
+      R(c[2],ix,o.y+1,4,2);R(c[2],ix,o.y+o.h-3,4,2);
+    }
+    for(let iy=o.y+10;iy<o.y+o.h-12;iy+=12){
+      R(c[2],o.x+1,iy,2,4);R(c[2],o.x+o.w-3,iy,2,4);
+    }
+    return;
+  }
+  if(o.k==='shade'){
+    // dappled palm shade on the warm courtyard stones
+    E('rgba(58,42,20,0.16)',o.x+o.w/2,o.y+o.h/2,o.w/2,o.h/2);
     return;
   }
   R(c[0],o.x,o.y,o.w,o.h);R(c[1],o.x+4,o.y+4,o.w-8,o.h-8);R(c[0],o.x+7,o.y+7,o.w-14,o.h-14);
@@ -207,10 +282,59 @@ function drawObj(o){
   case 'table':R('#5a3a1c',x+3,y+h-8,6,8);R('#5a3a1c',x+w-9,y+h-8,6,8);R('#8a5a2f',x,y,w,h-6);R('#a8743c',x,y,w,3);
     C('#f4e8c8',x+16,y+11,6);C('#c98f4a',x+16,y+11,4);C('#f4e8c8',x+w-20,y+10,5);C('#2f7a86',x+w/2,y+12,4);break;
   case 'pots':E('#b5683a',x+w/2,y+h-11,w/2-2,11);R('#b5683a',x+7,y+3,w-14,8);R('#150a05',x+7,y+3,w-14,3);R('#d9b44a',x+3,y+h-14,w-6,2);break;
-  case 'fountain':E('#a89878',x+w/2,y+h/2+3,w/2,h/2-2);E('#c8b898',x+w/2,y+h/2,w/2,h/2-3);E('#3a9ad0',x+w/2,y+h/2,w/2-6,h/2-9);
-    R('#c8b898',x+w/2-4,y+8,8,h/2-4);C('#7fd0f0',x+w/2,y+6,4);R('#7fd0f0',x+w/2-1,y+10,2,10);break;
-  case 'palm':R('#7a5230',x+6,y-34,4,42);R('#5a3a1c',x+6,y-22,4,1);R('#5a3a1c',x+6,y-12,4,1);
-    E('#2f7a3a',x+8-10,y-30,10,4);E('#2f7a3a',x+8+10,y-30,10,4);E('#3a8a44',x+8,y-38,4,9);C('#3a8a44',x+8,y-33,6);C('#8a4a1a',x+4,y-27,2);C('#8a4a1a',x+12,y-27,2);break;
+  case 'fountain':{
+    const sp=(gTick>>2)%3;
+    E('#9c8a68',x+w/2,y+h/2+3,w/2,h/2-2);
+    E('#d4c29e',x+w/2,y+h/2,w/2,h/2-3);
+    E('#2f7a86',x+w/2,y+h/2,w/2-4,h/2-6);
+    E('#49b2d8',x+w/2,y+h/2,w/2-7,h/2-9);
+    // animated water ripples
+    ctx.strokeStyle='#a8e6ff';ctx.lineWidth=1;
+    ctx.beginPath();ctx.ellipse(x+w/2,y+h/2,10+sp*3,5+sp*1.5,0,0,7);ctx.stroke();
+    // central tiered spout
+    R('#d4c29e',x+w/2-4,y+8,8,h/2-4);
+    E('#b8a480',x+w/2,y+11,9,4);
+    C('#9be4ff',x+w/2,y+5-(sp%2),4);
+    R('#9be4ff',x+w/2-1,y+8,2,11);
+    R('#9be4ff',x+w/2-6,y+12+sp,2,4);
+    R('#9be4ff',x+w/2+5,y+12+((sp+1)%3),2,4);
+    break;
+  }
+  case 'palm':{
+    // soil planter ring
+    E('#8a623a',x+8,y+4,11,5);
+    E('#5c3d20',x+8,y+4,8,3);
+    // textured trunk
+    R('#7a5230',x+6,y-38,5,42);
+    for(let ty=y-34;ty<y;ty+=5)R('#56371c',x+6,ty,5,2);
+    // lush crown of fronds
+    E('#23662e',x+8-12,y-33,12,4);
+    E('#23662e',x+8+12,y-33,12,4);
+    E('#2f7a3a',x+8-9,y-38,10,4);
+    E('#2f7a3a',x+8+9,y-38,10,4);
+    E('#3f964a',x+8,y-43,4,10);
+    E('#3f964a',x+8-6,y-29,8,3);
+    E('#3f964a',x+8+6,y-29,8,3);
+    C('#3a8a44',x+8,y-36,6);
+    // hanging golden Baghdad date clusters
+    C('#d99b26',x+3,y-29,2.5);C('#b87818',x+3,y-26,2);
+    C('#d99b26',x+13,y-29,2.5);C('#b87818',x+13,y-26,2);
+    break;
+  }
+  case 'shrub':
+    E('#286832',x+w/2,y+h-5,w/2,6);
+    E('#388542',x+w/2-3,y+h-7,w/2-3,5);
+    E('#388542',x+w/2+4,y+h-6,w/2-4,4);
+    // jasmine & orange blossom specks
+    R('#fff8eb',x+5,y+3,2,2);R('#fff8eb',x+12,y+2,2,2);R('#f4a63a',x+9,y+6,2,2);
+    break;
+  case 'bench':
+    R('#5a3a1c',x+3,y+h-6,4,6);R('#5a3a1c',x+w-7,y+h-6,4,6);
+    R('#8a5a2f',x,y,w,h-5);
+    R('#c9a458',x+2,y+2,w-4,h-9);
+    for(let bx=x+6;bx<x+w-4;bx+=6)R('#9c7834',bx,y+2,2,h-9);
+    break;
+  case 'cat':drawCat(o);break;
   case 'divan':R('#5a1a24',x,y,w,h);R('#c9a43a',x,y,w,2);R('#c9a43a',x,y+h-2,w,2);
     if(w>h){for(let i=6;i<w-12;i+=26){R(i%2?'#2f7a86':'#d9b44a',x+i,y+4,18,h-8)}}else{for(let j=6;j<h-12;j+=26){R(j%2?'#2f7a86':'#d9b44a',x+4,y+j,w-8,18)}}break;
   case 'shelf':R('#6b4423',x,y,w,h);R('#4a2c14',x+2,y+2,w-4,h-4);
@@ -262,11 +386,9 @@ function drawObj(o){
     R('#4a2c14',x+w-9,y+h-8,5,8);
     R('#6e4726',x,y,w,h-6);
     R('#8a5b32',x,y,w,3);
-    // parchment scroll
     R('#e8dcb8',x+7,y+5,18,12);
     R('#6b5a3c',x+10,y+8,11,1);
     R('#6b5a3c',x+10,y+11,9,1);
-    // brass astrolabe ring
     C('#d9b44a',x+w-16,y+11,6);
     C('#6e4726',x+w-16,y+11,4);
     R('#d9b44a',x+w-17,y+4,2,14);
@@ -300,7 +422,6 @@ function draw(){
   R(room.wall[0],0,0,320,70);R(room.wall[1],0,62,320,8);
   R(room.wall[0],0,230,320,10);R(room.wall[0],0,0,10,240);R(room.wall[0],310,0,10,240);
   if(room.basement){
-    // stone block mortar lines + high barred ventilation grates
     for(let y=16;y<62;y+=15)R('#1d1b18',0,y,320,2);
     for(let row=0;row<4;row++){
       const off=(row%2)*18;
@@ -310,10 +431,33 @@ function draw(){
       R('#1d1b18',vx-2,10,28,16);R(room.win,vx,12,24,12);
       for(let bx=vx+4;bx<vx+22;bx+=5)R('#6e685f',bx,12,2,12);
     }
+  }else if(room.yard){
+    // Open Baghdad sky above the sun-baked mudbrick courtyard wall
+    R('#6ab8e8',0,0,320,18);
+    R('#8ed0f5',0,12,320,6);
+    // distant Baghdad dome & minaret silhouette on the left skyline
+    C('#b8945c',18,18,6);R('#b8945c',12,15,12,4);R('#d9b44a',17,10,2,3);
+    R('#b8945c',6,6,3,12);C('#d9b44a',7.5,5,1.5);
+    // crenellated parapet wall teeth
+    for(let x=0;x<320;x+=16)R(room.wall[0],x,14,10,5);
+    // turquoise glazed tile frieze along the top of the courtyard wall
+    R(room.acc,0,22,320,4);
+    for(let x=4;x<320;x+=12)R('#d9b44a',x,23,4,2);
+    // subtle sun-baked brick courses & blind decorative niches
+    R('#b89056',0,42,320,1);
+    for(const nx of [78,228]){
+      arch('#9c7640',nx,20,34,56);
+      arch('#b38b52',nx+2,16,35,55);
+    }
+    // hanging brass courtyard lanterns
+    for(const lx of [15,301]){
+      R('#2a1a10',lx+1,18,1,6);
+      R('#d9b44a',lx,24,4,6);
+      C('#ffe27a',lx+2,27,1.5);
+    }
   }else{
     for(let x=6;x<320;x+=14){R(room.acc,x+2,6,2,6);R(room.acc,x,8,6,2)}
     R(room.acc,0,18,320,2);R(room.acc,0,66,320,2);
-    // arched lattice windows
     for(const wx of [74,222]){
       arch(room.wall[1],wx-3,30,36,60);arch(room.win,wx,24,38,58);
       R('#e8dcb8',wx+11,38,2,20);R('#e8dcb8',wx,46,24,2);R('#e8dcb8',wx+4,32,16,2);
@@ -330,7 +474,7 @@ function draw(){
   for(const o of sorted)if(o.y+o.h<=P.y)drawObj(o);
   drawPlayer();
   for(const o of sorted)if(o.y+o.h>P.y)drawObj(o);
-  if(banner>0){R('#000',8,206,214,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
+  if(banner>0){R('#000',8,206,226,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
   if(dlg){
     R('#fff',16,150,288,80);R('#000',20,154,280,72);
     ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New",monospace';ctx.textBaseline='top';
