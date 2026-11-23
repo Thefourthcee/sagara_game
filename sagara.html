@@ -20,7 +20,7 @@ canvas{width:min(96vw,640px);aspect-ratio:4/3;image-rendering:pixelated;border:2
 </head>
 <body>
 <canvas id="c" width="320" height="240"></canvas>
-<div class="hint">Arrow keys / WASD: move &nbsp;&bull;&nbsp; Z / Enter: interact &nbsp;&bull;&nbsp; Top doors: change room &nbsp;&bull;&nbsp; 1-5: warp &nbsp;&bull;&nbsp; Esc: map &nbsp;&bull;&nbsp; Diagonals work like Undertale</div>
+<div class="hint">Arrows/WASD: move &nbsp;&bull;&nbsp; Z/Enter: interact &nbsp;&bull;&nbsp; Doors: rooms &nbsp;&bull;&nbsp; 1-6: warp &nbsp;&bull;&nbsp; Esc: map &nbsp;&bull;&nbsp; N: music</div>
 <div class="touch">
   <div class="pad">
     <span></span><button data-k="ArrowUp">&#9650;</button><span></span>
@@ -30,12 +30,75 @@ canvas{width:min(96vw,640px);aspect-ratio:4/3;image-rendering:pixelated;border:2
 </div>
 <script>
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+
+// ---- Web Audio: Arabic Maqam Hijaz Oud & Darbuka Synthesizer ----
+let audioCtx=null,musicOn=true,musicStep=0,nextNoteTime=0;
+// Maqam Hijaz on D (D3, Eb3, F#3, G3, A3, Bb3, C4, D4, Eb4, F#4)
+const HIJAZ=[146.83,155.56,185.00,196.00,220.00,233.08,261.63,293.66,311.13,369.99];
+const MELODY_HOUSE=[0,2,3,4, 3,2,1,0, 4,5,4,3, 2,3,1,0, 7,6,5,4, 5,4,3,2, 3,4,2,1, 0,-1,0,-1];
+const MELODY_VILLAGE=[4,5,7,8, 7,5,4,3, 4,7,5,4, 3,2,3,4, 7,8,9,8, 7,5,4,3, 2,3,4,2, 1,0,1,0];
+const DRUM_PAT=['D',0,'T','K', 'D','K','T',0, 'D',0,'T','K', 'D','T','K','K']; // Dum / Tak / Ka
+
+function ensureAudio(){
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+}
+function playOud(freq,time,dur){
+  if(!audioCtx||!musicOn||freq<=0)return;
+  const o1=audioCtx.createOscillator(),o2=audioCtx.createOscillator(),g=audioCtx.createGain(),f=audioCtx.createBiquadFilter();
+  o1.type='triangle';o2.type='sawtooth';
+  o1.frequency.setValueAtTime(freq,time);
+  o2.frequency.setValueAtTime(freq*2,time); // octave double-course string
+  f.type='lowpass';f.frequency.setValueAtTime(1100,time);f.frequency.exponentialRampToValueAtTime(320,time+dur);
+  const g2=audioCtx.createGain();g2.gain.value=0.18;
+  g.gain.setValueAtTime(0.001,time);
+  g.gain.linearRampToValueAtTime(0.085,time+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0008,time+dur);
+  o1.connect(f);o2.connect(g2);g2.connect(f);f.connect(g);g.connect(audioCtx.destination);
+  o1.start(time);o2.start(time);o1.stop(time+dur);o2.stop(time+dur);
+}
+function playDarbuka(type,time){
+  if(!audioCtx||!musicOn||!type)return;
+  const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  if(type==='D'){ // Dum (deep bass)
+    o.type='sine';o.frequency.setValueAtTime(135,time);o.frequency.exponentialRampToValueAtTime(52,time+0.18);
+    g.gain.setValueAtTime(0.11,time);g.gain.exponentialRampToValueAtTime(0.001,time+0.2);
+  }else{ // Tak / Ka (crisp rim)
+    o.type='triangle';o.frequency.setValueAtTime(type==='T'?440:330,time);o.frequency.exponentialRampToValueAtTime(140,time+0.07);
+    g.gain.setValueAtTime(type==='T'?0.055:0.035,time);g.gain.exponentialRampToValueAtTime(0.001,time+0.08);
+  }
+  o.connect(g);g.connect(audioCtx.destination);o.start(time);o.stop(time+0.22);
+}
+function playBlip(pitch){
+  if(!audioCtx||!musicOn)return;
+  const t=audioCtx.currentTime,o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type='square';o.frequency.setValueAtTime(pitch||380,t);
+  g.gain.setValueAtTime(0.03,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.045);
+  o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+0.05);
+}
+function tickMusic(){
+  if(!audioCtx||!musicOn||audioCtx.state!=='running')return;
+  const stepDur=0.23;
+  if(nextNoteTime<audioCtx.currentTime)nextNoteTime=audioCtx.currentTime+0.02;
+  while(nextNoteTime<audioCtx.currentTime+0.12){
+    const mel=cur===6?MELODY_VILLAGE:MELODY_HOUSE;
+    const idx=mel[musicStep%mel.length];
+    if(idx>=0)playOud(HIJAZ[idx],nextNoteTime,stepDur*1.6);
+    if(musicStep%4===0)playOud(HIJAZ[0]*0.5,nextNoteTime,stepDur*3.5); // D2 drone
+    playDarbuka(DRUM_PAT[musicStep%DRUM_PAT.length],nextNoteTime);
+    nextNoteTime+=stepDur;
+    musicStep++;
+  }
+}
+
 // ---- Input: later key press takes priority per axis, like Undertale ----
 const held=[];
 const map={ArrowUp:'u',w:'u',W:'u',ArrowDown:'d',s:'d',S:'d',ArrowLeft:'l',a:'l',A:'l',ArrowRight:'r',d:'r',D:'r'};
 let interact=false;
 let mapPress=false,mapOpen=false;
 function down(k,rep){
+  ensureAudio();
+  if((k==='n'||k==='N')&&!rep){musicOn=!musicOn;return true}
   if(k==='Escape'||k==='m'||k==='M'){if(!rep)mapPress=true;return true}
   if(map[k]){const m=map[k];const i=held.indexOf(m);if(i>=0)held.splice(i,1);held.push(m);return true}
   if(k==='z'||k==='Z'||k==='Enter'){interact=true;return true}
@@ -52,9 +115,9 @@ document.querySelectorAll('[data-k]').forEach(b=>{
   ['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,()=>up(k)));
 });
 
-// ---- Baghdad, c. 800 CE: a family house around a courtyard ----
-const NAMES={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Cellar'};
-const TITLES={1:'The Kitchen',2:'The Courtyard (Al-Fina)',3:'The Majlis (Living Room)',4:'Your Room',5:'The Basement (Sirdab)'};
+// ---- Baghdad, c. 800 CE: house & surrounding village ----
+const NAMES={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Cellar',6:'Village'};
+const TITLES={1:'The Kitchen',2:'The Courtyard (Al-Fina)',3:'The Majlis (Living Room)',4:'Your Room',5:'The Basement (Sirdab)',6:'Al-Karkh Village Quarter'};
 const ROOMS={
  1:{floor:['#a8683a','#9a5c32'],wall:['#e0c896','#c4a56c'],acc:'#2f7a86',win:'#16304a',
   deco:[{k:'rug',x:92,y:118,w:100,h:80,c:['#7a1f2f','#d9b44a','#2f7a86']}],
@@ -98,17 +161,45 @@ const ROOMS={
    {k:'crate',x:60,y:190,w:30,h:24},
    {k:'brazier',x:268,y:186,w:22,h:24,talk:'* Glowing embers ward off the\n  damp chill of the sirdab.'},
    {k:'astrolabe_table',x:132,y:144,w:56,h:30,talk:'* Your father\'s brass astrolabe\n  and star charts rest here,\n  safe from the midday sun.'}
+  ]},
+ 6:{village:true,w:640,h:240,floor:['#d8bc82','#ccb076'],wall:['#c9a46a','#a98448'],acc:'#2f7a86',win:'#6bb8e8',
+  deco:[
+   {k:'road',x:10,y:142,w:620,h:46},
+   {k:'plaza',x:274,y:116,w:116,h:96}
+  ],
+  objs:[
+   // Mudbrick & timber Baghdadi village houses along the lane
+   {k:'house',x:58,y:86,w:88,h:46,c:'#e0c48e',roof:'#b88c52',door:'#2f7a86',talk:'* The baker\'s mudbrick house.\n* Warm sesame scent drifts from\n  its mashrabiya lattice window.'},
+   {k:'house',x:164,y:84,w:94,h:48,c:'#d4b27a',roof:'#9c7240',door:'#a33b2b',talk:'* A weaver\'s home with a shaded\n  wooden balcony overhanging the\n  sandstone alley.'},
+   {k:'house',x:412,y:86,w:92,h:46,c:'#e4cda0',roof:'#b88c52',door:'#2f7a86',talk:'* The spice merchant\'s house.\n* Jars of saffron, cardamom, and\n  sumac sit on the windowsill.'},
+   {k:'house',x:520,y:84,w:96,h:48,c:'#cfa972',roof:'#8f6638',door:'#a33b2b',talk:'* A scholar\'s residence near\n  the canal gate.'},
+   // Village well, stalls, palms & lamp
+   {k:'well',x:316,y:144,w:34,h:26,talk:'* The village stone well.\n* Neighbors gather here at dusk\n  to share news from the Tigris.'},
+   {k:'stall',x:268,y:106,w:42,h:24,c:'#a33b2b',talk:'* A fruit & spice stall piled\n  with pomegranates, figs, and\n  golden Basra dates.'},
+   {k:'stall',x:360,y:106,w:42,h:24,c:'#2f7a86',talk:'* Glazed turquoise pottery and\n  hammered copper ewers gleam in\n  the sunlight.'},
+   {k:'palm',x:26,y:126,w:16,h:8},{k:'palm',x:256,y:198,w:16,h:8},{k:'palm',x:402,y:198,w:16,h:8},{k:'palm',x:614,y:124,w:16,h:8},
+   {k:'pots',x:150,y:120,w:22,h:22},{k:'pots',x:504,y:120,w:22,h:22},
+   // Village people (NPCs + roaming villagers)
+   {k:'npc',role:'oud',x:288,y:194,w:16,h:8,talk:'* (The musician strums a soulful\n  Maqam Hijaz on his wooden oud.)\n* "May this melody lighten your\n  steps through Baghdad, friend!"'},
+   {k:'npc',role:'merchant',x:280,y:132,w:16,h:8,talk:'* "Fresh pomegranates and sweet\n  figs! Just arrived by river\n  barge this morning!"'},
+   {k:'npc',role:'elder',x:356,y:160,w:16,h:8,talk:'* "Peace be upon you, young one.\n* The Round City shines brightest\n  when neighbors greet each other."'},
+   {k:'npc',role:'walker1',x:120,y:164,w:16,h:8,roam:[80,220],vx:0.7,dir:'r',talk:'* "Heading to the House of Wisdom?\n  The copyists are busy today!"'},
+   {k:'npc',role:'walker2',x:480,y:168,w:16,h:8,roam:[430,580],vx:-0.65,dir:'l',talk:'* "Listen to the oud by the well!\n  Nothing beats afternoon music\n  in the shade of the palms."'}
   ]}
 };
 const BORDER=[{x:0,y:0,w:320,h:70},{x:0,y:230,w:320,h:10},{x:0,y:0,w:10,h:240},{x:310,y:0,w:10,h:240}];
-function doorsOf(id){return [1,2,3,4,5].filter(i=>i!==id).map((to,k)=>({x:26+k*76,y:70,w:40,h:6,to}))}
-let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null,gTick=0,catPet=0;
+function doorsOf(id){
+  if(id===6)return [{x:20,y:70,w:42,h:6,to:2}]; // Village gate leads back to your Courtyard
+  return [1,2,3,4,5,6].filter(i=>i!==id).map((to,k)=>({x:18+k*60,y:70,w:38,h:6,to}));
+}
+let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null,gTick=0,catPet=0,camX=0;
 const P={x:160,y:206,dir:'d',frame:0,tick:0,moving:false};
 function setRoom(id,from){
   cur=id;room=ROOMS[id];doors=doorsOf(id);objs=room.objs;
   const d=from?doors.find(d=>d.to===from):null;
-  if(d){P.x=d.x+20;P.y=86}else{P.x=160;P.y=206}
+  if(d){P.x=d.x+Math.floor(d.w/2);P.y=86}else{P.x=160;P.y=206}
   P.dir='d';banner=90;dlg=null;
+  camX=room.w?Math.max(0,Math.min(room.w-320,P.x-160)):0;
 }
 const SPEED=3;           // px per frame @30fps, same as Frisk
 const ANIM_EVERY=5;      // game frames per walk-frame
@@ -116,8 +207,9 @@ const ANIM_EVERY=5;      // game frames per walk-frame
 function box(x,y){return{x:x-7,y:y-6,w:14,h:6}}
 function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
 function blocked(x,y){
-  const b=box(x,y);
-  for(const w of BORDER)if(hit(b,w))return true;
+  const b=box(x,y),rw=room.w||320;
+  const walls=[{x:0,y:0,w:rw,h:70},{x:0,y:230,w:rw,h:10},{x:0,y:0,w:10,h:240},{x:rw-10,y:0,w:10,h:240}];
+  for(const w of walls)if(hit(b,w))return true;
   for(const o of objs)if(hit(b,o))return true;
   return false;
 }
@@ -129,19 +221,33 @@ function talkAhead(){
   else f={x:b.x+b.w,y:b.y-6,w:14,h:b.h+8};
   return objs.find(o=>(o.talk||o.talks)&&hit(f,o));
 }
-addEventListener('keydown',e=>{const n=+e.key;if(n>=1&&n<=5&&!T&&!mapOpen&&n!==cur)T={f:0,to:n,from:cur}});
+addEventListener('keydown',e=>{const n=+e.key;if(n>=1&&n<=6&&!T&&!mapOpen&&n!==cur)T={f:0,to:n,from:cur}});
 
 function update(){
   gTick++;
+  tickMusic();
   if(banner>0)banner--;
   if(mapPress){mapPress=false;if(!T&&!dlg)mapOpen=!mapOpen}
   if(mapOpen){interact=false;P.moving=false;return}
   if(T){T.f++;if(T.f===8)setRoom(T.to,T.from);if(T.f>=16)T=null;interact=false;return}
   if(dlg){
     const m=dlg.text;
-    if(!dlg.done){dlg.shown=Math.min(m.length,dlg.shown+1);if(dlg.shown>=m.length)dlg.done=true}
+    if(!dlg.done){
+      dlg.shown=Math.min(m.length,dlg.shown+1);
+      if(dlg.shown%3===0)playBlip(dlg.cat?540:340);
+      if(dlg.shown>=m.length)dlg.done=true;
+    }
     if(interact){if(dlg.done)dlg=null;else{dlg.shown=m.length;dlg.done=true}}
     interact=false;P.moving=false;return;
+  }
+  // Roaming village NPCs
+  for(const o of objs){
+    if(o.roam){
+      const nx=o.x+o.vx;
+      const pb=box(P.x,P.y),nb={x:nx,y:o.y,w:o.w,h:o.h};
+      if(nx<o.roam[0]||nx>o.roam[1]||hit(nb,pb)){o.vx=-o.vx;o.dir=o.vx>0?'r':'l'}
+      else{o.x=nx;o.dir=o.vx>0?'r':'l'}
+    }
   }
   let dx=0,dy=0;
   for(const k of held){if(k==='l')dx=-1;if(k==='r')dx=1;if(k==='u')dy=-1;if(k==='d')dy=1}
@@ -153,6 +259,7 @@ function update(){
   if(dx<0)P.dir='l';else if(dx>0)P.dir='r';else if(dy<0)P.dir='u';else if(dy>0)P.dir='d';
   if(dx&&!blocked(P.x+dx*SPEED,P.y))P.x+=dx*SPEED;
   if(dy&&!blocked(P.x,P.y+dy*SPEED))P.y+=dy*SPEED;
+  camX=room.w?Math.max(0,Math.min(room.w-320,Math.round(P.x-160))):0;
   if(P.moving){P.tick++;if(P.tick>=ANIM_EVERY){P.tick=0;P.frame=(P.frame+1)%4}}
   else{P.frame=0;P.tick=0}
   const b=box(P.x,P.y);
@@ -162,6 +269,7 @@ function update(){
     if(t){
       const msg=t.talks?t.talks[catPet++%t.talks.length]:t.talk;
       dlg={text:msg,shown:0,done:false,cat:!!t.talks};
+      playBlip(t.talks?560:380);
     }
   }
   interact=false;
@@ -206,46 +314,72 @@ function drawMom(o){
   R('#6a2f7a',sx+1,sy,14,5);R('#6a2f7a',sx+1,sy+3,4,13);R('#6a2f7a',sx+11,sy+3,4,13);R('#8a4a9a',sx+2,sy+1,12,1);
   R('#2a1a10',sx+5,sy+7,2,2);R('#2a1a10',sx+9,sy+7,2,2);R('#a0483a',sx+7,sy+11,2,1);
 }
+function drawNPC(o){
+  const walk=o.roam?((gTick>>2)%4):0;
+  const step=(walk===1||walk===3),bob=step?1:0,legA=walk===1?-2:walk===3?2:0;
+  const sx=Math.round(o.x),sy=Math.round(o.y)+8-30-bob;
+  const pal={
+    oud:['#2f6f78','#d9b44a','#f7f3e6','#c68a58'],
+    merchant:['#a33b2b','#2f7a86','#f4e8c8','#b87a4a'],
+    elder:['#5a4a68','#d9b44a','#e8e2d2','#c68a58'],
+    walker1:['#3a7a48','#a33b2b','#f7f3e6','#c68a58'],
+    walker2:['#8a4a2a','#2f7a86','#e8dcb8','#b87a4a']
+  }[o.role]||['#2f6f78','#d9b44a','#f7f3e6','#c68a58'];
+  R('#6b4a2a',sx+3+legA,sy+27+bob,5,3);R('#6b4a2a',sx+9-legA,sy+27+bob,5,3);
+  R(pal[0],sx+2,sy+14,12,14);
+  R('#d9b44a',sx+2,sy+26,12,2);R(pal[1],sx+2,sy+20,12,3);
+  R(pal[0],sx,sy+15,3,9);R(pal[0],sx+13,sy+15,3,9);
+  R(pal[3],sx,sy+24,3,2);R(pal[3],sx+13,sy+24,3,2);
+  R(pal[3],sx+3,sy+4,10,10);
+  R(pal[2],sx+1,sy,14,6);R(pal[2],sx+2,sy-1,12,2);
+  R('#2a1a10',sx+5,sy+7,2,2);R('#2a1a10',sx+9,sy+7,2,2);
+  if(o.role==='elder')R('#dcd6c8',sx+4,sy+11,8,5); // white beard
+  if(o.role==='oud'){
+    // Wooden pear-shaped Oud held across the chest + floating music notes
+    E('#8a4a22',sx+11,sy+21,6,4.5);
+    E('#d9b44a',sx+11,sy+21,2,2);
+    R('#5a2e12',sx+1,sy+19,7,2);
+    const ny=(gTick%24)*0.5;
+    C('#ffd25a',sx+16,sy+6-ny,1.5);R('#ffd25a',sx+17,sy+1-ny,1,5);
+  }
+}
 function drawCat(o){
   const x=o.x,y=o.y;
   const tailWag=Math.sin(gTick*0.18)*2;
   const purrBob=(dlg&&dlg.cat)?(gTick%6<3?-1:0):0;
-  // soft ground shadow
   E('rgba(42,26,16,0.28)',x+8,y+8,8,3);
-  // curled tail
   R('#d97a34',x+12,y+2+purrBob,3,4);
   R('#d97a34',x+14,y-1+Math.round(tailWag)+purrBob,2,4);
   R('#fff8eb',x+14,y-2+Math.round(tailWag)+purrBob,2,2);
-  // ginger & white body
   E('#d97a34',x+8,y+4+purrBob,6,4.5);
   E('#fff8eb',x+6,y+5+purrBob,3.5,3);
-  // front paws
-  R('#fff8eb',x+3,y+7,3,2);
-  R('#fff8eb',x+7,y+7,3,2);
-  // head
+  R('#fff8eb',x+3,y+7,3,2);R('#fff8eb',x+7,y+7,3,2);
   C('#d97a34',x+5,y+purrBob,4.2);
-  // white muzzle
   R('#fff8eb',x+3,y+1+purrBob,4,2);
-  // pointed ears + inner pink
-  R('#d97a34',x+1,y-5+purrBob,2,3);
-  R('#d97a34',x+7,y-5+purrBob,2,3);
-  R('#e89a9a',x+2,y-4+purrBob,1,2);
-  R('#e89a9a',x+7,y-4+purrBob,1,2);
-  // eyes (happy closed arcs when purring in dialogue, green eyes otherwise)
+  R('#d97a34',x+1,y-5+purrBob,2,3);R('#d97a34',x+7,y-5+purrBob,2,3);
+  R('#e89a9a',x+2,y-4+purrBob,1,2);R('#e89a9a',x+7,y-4+purrBob,1,2);
   if(dlg&&dlg.cat){
-    R('#2a1a10',x+2,y-1+purrBob,2,1);
-    R('#2a1a10',x+6,y-1+purrBob,2,1);
+    R('#2a1a10',x+2,y-1+purrBob,2,1);R('#2a1a10',x+6,y-1+purrBob,2,1);
   }else{
-    R('#3a9a5a',x+2,y-1+purrBob,2,2);
-    R('#3a9a5a',x+6,y-1+purrBob,2,2);
-    R('#111',x+3,y-1+purrBob,1,2);
-    R('#111',x+7,y-1+purrBob,1,2);
+    R('#3a9a5a',x+2,y-1+purrBob,2,2);R('#3a9a5a',x+6,y-1+purrBob,2,2);
+    R('#111',x+3,y-1+purrBob,1,2);R('#111',x+7,y-1+purrBob,1,2);
   }
-  // pink nose
   R('#e88a8a',x+4,y+1+purrBob,2,1);
 }
 function drawRug(o){
   const c=o.c;
+  if(o.k==='road'){
+    R('#c2a268',o.x,o.y,o.w,o.h);
+    R('#b08f54',o.x,o.y,o.w,2);R('#b08f54',o.x,o.y+o.h-2,o.w,2);
+    for(let sx=o.x+14;sx<o.x+o.w-10;sx+=28){R('#9e7e46',sx,o.y+12,8,3);R('#9e7e46',sx+12,o.y+30,6,3)}
+    return;
+  }
+  if(o.k==='plaza'){
+    R('#2f7a86',o.x,o.y,o.w,o.h);
+    R('#d9b44a',o.x+3,o.y+3,o.w-6,o.h-6);
+    R('#dfC48c',o.x+6,o.y+6,o.w-12,o.h-12);
+    return;
+  }
   if(o.k==='mat'){
     R(c[0],o.x,o.y,o.w,o.h);
     for(let y=o.y+4;y<o.y+o.h-2;y+=6)R(c[1],o.x+2,y,o.w-4,2);
@@ -253,20 +387,12 @@ function drawRug(o){
     return;
   }
   if(o.k==='tile_border'){
-    // Baghdadi turquoise & gold geometric mosaic courtyard apron around the fountain
-    R(c[0],o.x,o.y,o.w,o.h);
-    R(c[1],o.x+3,o.y+3,o.w-6,o.h-6);
-    R('#e6cf9c',o.x+6,o.y+6,o.w-12,o.h-12);
-    for(let ix=o.x+10;ix<o.x+o.w-12;ix+=12){
-      R(c[2],ix,o.y+1,4,2);R(c[2],ix,o.y+o.h-3,4,2);
-    }
-    for(let iy=o.y+10;iy<o.y+o.h-12;iy+=12){
-      R(c[2],o.x+1,iy,2,4);R(c[2],o.x+o.w-3,iy,2,4);
-    }
+    R(c[0],o.x,o.y,o.w,o.h);R(c[1],o.x+3,o.y+3,o.w-6,o.h-6);R('#e6cf9c',o.x+6,o.y+6,o.w-12,o.h-12);
+    for(let ix=o.x+10;ix<o.x+o.w-12;ix+=12){R(c[2],ix,o.y+1,4,2);R(c[2],ix,o.y+o.h-3,4,2)}
+    for(let iy=o.y+10;iy<o.y+o.h-12;iy+=12){R(c[2],o.x+1,iy,2,4);R(c[2],o.x+o.w-3,iy,2,4)}
     return;
   }
   if(o.k==='shade'){
-    // dappled palm shade on the warm courtyard stones
     E('rgba(58,42,20,0.16)',o.x+o.w/2,o.y+o.h/2,o.w/2,o.h/2);
     return;
   }
@@ -284,57 +410,73 @@ function drawObj(o){
   case 'pots':E('#b5683a',x+w/2,y+h-11,w/2-2,11);R('#b5683a',x+7,y+3,w-14,8);R('#150a05',x+7,y+3,w-14,3);R('#d9b44a',x+3,y+h-14,w-6,2);break;
   case 'fountain':{
     const sp=(gTick>>2)%3;
-    E('#9c8a68',x+w/2,y+h/2+3,w/2,h/2-2);
-    E('#d4c29e',x+w/2,y+h/2,w/2,h/2-3);
-    E('#2f7a86',x+w/2,y+h/2,w/2-4,h/2-6);
-    E('#49b2d8',x+w/2,y+h/2,w/2-7,h/2-9);
-    // animated water ripples
+    E('#9c8a68',x+w/2,y+h/2+3,w/2,h/2-2);E('#d4c29e',x+w/2,y+h/2,w/2,h/2-3);
+    E('#2f7a86',x+w/2,y+h/2,w/2-4,h/2-6);E('#49b2d8',x+w/2,y+h/2,w/2-7,h/2-9);
     ctx.strokeStyle='#a8e6ff';ctx.lineWidth=1;
     ctx.beginPath();ctx.ellipse(x+w/2,y+h/2,10+sp*3,5+sp*1.5,0,0,7);ctx.stroke();
-    // central tiered spout
-    R('#d4c29e',x+w/2-4,y+8,8,h/2-4);
-    E('#b8a480',x+w/2,y+11,9,4);
-    C('#9be4ff',x+w/2,y+5-(sp%2),4);
-    R('#9be4ff',x+w/2-1,y+8,2,11);
-    R('#9be4ff',x+w/2-6,y+12+sp,2,4);
-    R('#9be4ff',x+w/2+5,y+12+((sp+1)%3),2,4);
+    R('#d4c29e',x+w/2-4,y+8,8,h/2-4);E('#b8a480',x+w/2,y+11,9,4);
+    C('#9be4ff',x+w/2,y+5-(sp%2),4);R('#9be4ff',x+w/2-1,y+8,2,11);
+    R('#9be4ff',x+w/2-6,y+12+sp,2,4);R('#9be4ff',x+w/2+5,y+12+((sp+1)%3),2,4);
     break;
   }
   case 'palm':{
-    // soil planter ring
-    E('#8a623a',x+8,y+4,11,5);
-    E('#5c3d20',x+8,y+4,8,3);
-    // textured trunk
+    E('#8a623a',x+8,y+4,11,5);E('#5c3d20',x+8,y+4,8,3);
     R('#7a5230',x+6,y-38,5,42);
     for(let ty=y-34;ty<y;ty+=5)R('#56371c',x+6,ty,5,2);
-    // lush crown of fronds
-    E('#23662e',x+8-12,y-33,12,4);
-    E('#23662e',x+8+12,y-33,12,4);
-    E('#2f7a3a',x+8-9,y-38,10,4);
-    E('#2f7a3a',x+8+9,y-38,10,4);
-    E('#3f964a',x+8,y-43,4,10);
-    E('#3f964a',x+8-6,y-29,8,3);
-    E('#3f964a',x+8+6,y-29,8,3);
+    E('#23662e',x+8-12,y-33,12,4);E('#23662e',x+8+12,y-33,12,4);
+    E('#2f7a3a',x+8-9,y-38,10,4);E('#2f7a3a',x+8+9,y-38,10,4);
+    E('#3f964a',x+8,y-43,4,10);E('#3f964a',x+8-6,y-29,8,3);E('#3f964a',x+8+6,y-29,8,3);
     C('#3a8a44',x+8,y-36,6);
-    // hanging golden Baghdad date clusters
     C('#d99b26',x+3,y-29,2.5);C('#b87818',x+3,y-26,2);
     C('#d99b26',x+13,y-29,2.5);C('#b87818',x+13,y-26,2);
     break;
   }
   case 'shrub':
-    E('#286832',x+w/2,y+h-5,w/2,6);
-    E('#388542',x+w/2-3,y+h-7,w/2-3,5);
-    E('#388542',x+w/2+4,y+h-6,w/2-4,4);
-    // jasmine & orange blossom specks
+    E('#286832',x+w/2,y+h-5,w/2,6);E('#388542',x+w/2-3,y+h-7,w/2-3,5);E('#388542',x+w/2+4,y+h-6,w/2-4,4);
     R('#fff8eb',x+5,y+3,2,2);R('#fff8eb',x+12,y+2,2,2);R('#f4a63a',x+9,y+6,2,2);
     break;
   case 'bench':
     R('#5a3a1c',x+3,y+h-6,4,6);R('#5a3a1c',x+w-7,y+h-6,4,6);
-    R('#8a5a2f',x,y,w,h-5);
-    R('#c9a458',x+2,y+2,w-4,h-9);
+    R('#8a5a2f',x,y,w,h-5);R('#c9a458',x+2,y+2,w-4,h-9);
     for(let bx=x+6;bx<x+w-4;bx+=6)R('#9c7834',bx,y+2,2,h-9);
     break;
   case 'cat':drawCat(o);break;
+  case 'npc':drawNPC(o);break;
+  case 'house':{
+    // Two-story Baghdadi mudbrick townhouse with shanashil (overhanging wooden lattice bay)
+    const top=y-26;
+    R(o.c,x,top,w,h+26);
+    R(o.roof,x-2,top-4,w+4,6);
+    for(let cx=x;cx<x+w;cx+=10)R(o.c,cx,top-7,6,3);
+    // Projecting wooden mashrabiya bay window (shanashil)
+    R('#5a3618',x+10,top+6,w-20,20);
+    R('#7a4b24',x+12,top+8,w-24,16);
+    for(let lx=x+16;lx<x+w-16;lx+=6)R('#d9b44a',lx,top+10,2,12);
+    // Arched doorway & lower windows
+    arch('#d9b44a',x+w/2-11,22,y+14,y+h);
+    arch(o.door,x+w/2-9,18,y+16,y+h);
+    R('#241408',x+14,y+16,12,14);R('#d9b44a',x+19,y+16,2,14);
+    R('#241408',x+w-26,y+16,12,14);R('#d9b44a',x+w-21,y+16,2,14);
+    break;
+  }
+  case 'well':
+    E('#7a6e5c',x+w/2,y+h-8,w/2,8);
+    R('#9c8e78',x+2,y+6,w-4,h-14);
+    E('#b8aa92',x+w/2,y+6,w/2-2,5);
+    E('#1c4a66',x+w/2,y+6,w/2-6,3);
+    R('#5a3a1c',x+4,y-10,3,16);R('#5a3a1c',x+w-7,y-10,3,16);
+    R('#7a5230',x+2,y-12,w-4,3);
+    break;
+  case 'stall':
+    R('#5a3a1c',x+2,y-10,3,h+10);R('#5a3a1c',x+w-5,y-10,3,h+10);
+    R('#8a5a2f',x,y+8,w,h-8);
+    // Striped awning
+    for(let sx=x-2;sx<x+w;sx+=8){
+      R(((sx-x)/8)%2===0?o.c:'#f4e8c8',sx,y-12,8,10);
+    }
+    // Goods displayed on counter
+    C('#c93b2b',x+10,y+7,3);C('#d99b26',x+18,y+7,3);C('#3a8a44',x+26,y+7,3);C('#2f7a86',x+34,y+7,3);
+    break;
   case 'divan':R('#5a1a24',x,y,w,h);R('#c9a43a',x,y,w,2);R('#c9a43a',x,y+h-2,w,2);
     if(w>h){for(let i=6;i<w-12;i+=26){R(i%2?'#2f7a86':'#d9b44a',x+i,y+4,18,h-8)}}else{for(let j=6;j<h-12;j+=26){R(j%2?'#2f7a86':'#d9b44a',x+4,y+j,w-8,18)}}break;
   case 'shelf':R('#6b4423',x,y,w,h);R('#4a2c14',x+2,y+2,w-4,h-4);
@@ -345,125 +487,106 @@ function drawObj(o){
     C('#111',x+w-14,y+8,3);R('#4a2c14',x+w-24,y+3,1,9);break;
   case 'lamp':R('#c9a43a',x+3,y+8,8,8);R('#a88a2a',x+1,y+14,12,2);C('#ffd25a',x+7,y+5,3);break;
   case 'mom':drawMom(o);break;
-  // ---- Basement objects ----
   case 'barrel':
-    E('#6b4222',x+w/2,y+h-12,w/2-1,12);
-    R('#7c4d28',x+2,y+5,w-4,h-15);
-    E('#8f5b32',x+w/2,y+5,w/2-2,4);
-    E('#523016',x+w/2,y+5,w/2-5,2);
-    R('#2b2b2b',x+1,y+9,w-2,2);
-    R('#2b2b2b',x+1,y+h-9,w-2,2);
+    E('#6b4222',x+w/2,y+h-12,w/2-1,12);R('#7c4d28',x+2,y+5,w-4,h-15);
+    E('#8f5b32',x+w/2,y+5,w/2-2,4);E('#523016',x+w/2,y+5,w/2-5,2);
+    R('#2b2b2b',x+1,y+9,w-2,2);R('#2b2b2b',x+1,y+h-9,w-2,2);
     break;
   case 'amphora_rack':
-    R('#4a2c14',x,y+10,w,h-10);
-    R('#6b4423',x+2,y+12,w-4,4);
+    R('#4a2c14',x,y+10,w,h-10);R('#6b4423',x+2,y+12,w-4,4);
     for(let i=0;i<3;i++){
       const ax=x+13+i*23;
-      E('#b5683a',ax,y+18,8,10);
-      R('#b5683a',ax-3,y+4,6,6);
-      R('#944f27',ax-5,y+7,2,5);
-      R('#944f27',ax+3,y+7,2,5);
-      R('#d9b44a',ax-4,y+3,8,2);
+      E('#b5683a',ax,y+18,8,10);R('#b5683a',ax-3,y+4,6,6);
+      R('#944f27',ax-5,y+7,2,5);R('#944f27',ax+3,y+7,2,5);R('#d9b44a',ax-4,y+3,8,2);
     }
     break;
   case 'crate':
-    R('#6b4928',x,y,w,h);
-    R('#855c34',x+2,y+2,w-4,h-9);
-    R('#52361c',x+2,y+Math.floor((h-9)/2),w-4,2);
-    R('#2e2e2e',x,y,w,2);
-    R('#2e2e2e',x,y+h-7,w,2);
+    R('#6b4928',x,y,w,h);R('#855c34',x+2,y+2,w-4,h-9);
+    R('#52361c',x+2,y+Math.floor((h-9)/2),w-4,2);R('#2e2e2e',x,y,w,2);R('#2e2e2e',x,y+h-7,w,2);
     break;
   case 'brazier':
-    R('#2b2826',x+5,y+14,w-10,h-14);
-    R('#3d3834',x+2,y+8,w-4,7);
+    R('#2b2826',x+5,y+14,w-10,h-14);R('#3d3834',x+2,y+8,w-4,7);
     const flicker=(gTick>>2)%2;
-    E('#c93b18',x+w/2,y+8,7,3);
-    C('#ff8c24',x+w/2-2,y+5-flicker,3);
-    C('#ffd25a',x+w/2+1,y+4+flicker,2.5);
+    E('#c93b18',x+w/2,y+8,7,3);C('#ff8c24',x+w/2-2,y+5-flicker,3);C('#ffd25a',x+w/2+1,y+4+flicker,2.5);
     break;
   case 'astrolabe_table':
-    R('#4a2c14',x+4,y+h-8,5,8);
-    R('#4a2c14',x+w-9,y+h-8,5,8);
-    R('#6e4726',x,y,w,h-6);
-    R('#8a5b32',x,y,w,3);
-    R('#e8dcb8',x+7,y+5,18,12);
-    R('#6b5a3c',x+10,y+8,11,1);
-    R('#6b5a3c',x+10,y+11,9,1);
-    C('#d9b44a',x+w-16,y+11,6);
-    C('#6e4726',x+w-16,y+11,4);
-    R('#d9b44a',x+w-17,y+4,2,14);
-    R('#d9b44a',x+w-22,y+10,12,2);
+    R('#4a2c14',x+4,y+h-8,5,8);R('#4a2c14',x+w-9,y+h-8,5,8);
+    R('#6e4726',x,y,w,h-6);R('#8a5b32',x,y,w,3);
+    R('#e8dcb8',x+7,y+5,18,12);R('#6b5a3c',x+10,y+8,11,1);R('#6b5a3c',x+10,y+11,9,1);
+    C('#d9b44a',x+w-16,y+11,6);C('#6e4726',x+w-16,y+11,4);
+    R('#d9b44a',x+w-17,y+4,2,14);R('#d9b44a',x+w-22,y+10,12,2);
     break;
   }
 }
 function drawMap(){
   R('#000',0,0,320,240);R('#d9b44a',6,6,308,228);R('#1a1208',9,9,302,222);
-  ctx.textBaseline='top';ctx.textAlign='center';ctx.font='bold 13px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('MAP OF THE HOUSE',160,15);
-  const pos={1:[24,42],2:[122,42],3:[220,42],4:[64,126],5:[180,126]},W=76,H=50;
-  const LBL={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Basement'};
+  ctx.textBaseline='top';ctx.textAlign='center';ctx.font='bold 13px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('MAP OF BAGHDAD QUARTER',160,15);
+  const pos={1:[24,40],2:[122,40],3:[220,40],4:[24,122],5:[122,122],6:[220,122]},W=76,H=48;
+  const LBL={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Basement',6:'Village'};
   ctx.strokeStyle='#8a6a2a';ctx.lineWidth=1.5;
-  for(let a=1;a<=5;a++)for(let b=a+1;b<=5;b++){ctx.beginPath();ctx.moveTo(pos[a][0]+W/2,pos[a][1]+H/2);ctx.lineTo(pos[b][0]+W/2,pos[b][1]+H/2);ctx.stroke()}
-  for(let i=1;i<=5;i++){
+  for(let a=1;a<=6;a++)for(let b=a+1;b<=6;b++){ctx.beginPath();ctx.moveTo(pos[a][0]+W/2,pos[a][1]+H/2);ctx.lineTo(pos[b][0]+W/2,pos[b][1]+H/2);ctx.stroke()}
+  for(let i=1;i<=6;i++){
     const x=pos[i][0],y=pos[i][1],here=i===cur;
     R(here?'#ffd25a':'#d9b44a',x-2,y-2,W+4,H+4);R(ROOMS[i].floor[0],x,y,W,H);R(ROOMS[i].wall[0],x,y,W,10);R(ROOMS[i].acc,x,y+10,W,2);
     R('#241408',x+W/2-5,y+2,10,8);
     ctx.font='bold 10px monospace';ctx.fillStyle='#fff';ctx.fillText(LBL[i],x+W/2,y+H/2-2);
-    if(here){C('#ff3b3b',x+6+(P.x/320)*(W-12),y+12+((P.y-70)/160)*(H-16),3.5);ctx.fillStyle='#ffd25a';ctx.font='bold 8px monospace';ctx.fillText('YOU ARE HERE',x+W/2,y+H+5)}
+    if(here){
+      const rw=ROOMS[i].w||320;
+      C('#ff3b3b',x+6+(P.x/rw)*(W-12),y+12+((P.y-70)/160)*(H-16),3.5);
+      ctx.fillStyle='#ffd25a';ctx.font='bold 8px monospace';ctx.fillText('YOU',x+W/2,y+H+4);
+    }
   }
-  ctx.font='bold 10px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('All rooms connect by their top doors',160,198);ctx.fillText('Esc / M: close',160,214);
+  ctx.font='bold 10px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('Music: '+(musicOn?'ON (N to mute)':'OFF (N to play)'),160,196);ctx.fillText('Esc / M: close',160,212);
   ctx.textAlign='left';
 }
 function draw(){
+  const rw=room.w||320;
   R('#000',0,0,320,240);
-  R(room.floor[0],10,70,300,160);
-  for(let i=0;i<300;i+=20)for(let j=0;j<160;j+=20)if(((i+j)/20)%2===0)R(room.floor[1],10+i,70+j,20,20);
+  ctx.save();
+  ctx.translate(-camX,0);
+  R(room.floor[0],10,70,rw-20,160);
+  for(let i=0;i<rw-20;i+=20)for(let j=0;j<160;j+=20)if(((i+j)/20)%2===0)R(room.floor[1],10+i,70+j,20,20);
   for(const d of room.deco)drawRug(d);
   // walls
-  R(room.wall[0],0,0,320,70);R(room.wall[1],0,62,320,8);
-  R(room.wall[0],0,230,320,10);R(room.wall[0],0,0,10,240);R(room.wall[0],310,0,10,240);
+  R(room.wall[0],0,0,rw,70);R(room.wall[1],0,62,rw,8);
+  R(room.wall[0],0,230,rw,10);R(room.wall[0],0,0,10,240);R(room.wall[0],rw-10,0,10,240);
   if(room.basement){
-    for(let y=16;y<62;y+=15)R('#1d1b18',0,y,320,2);
+    for(let y=16;y<62;y+=15)R('#1d1b18',0,y,rw,2);
     for(let row=0;row<4;row++){
       const off=(row%2)*18;
-      for(let x=off;x<320;x+=36)R('#1d1b18',x,row*15+2,2,14);
+      for(let x=off;x<rw;x+=36)R('#1d1b18',x,row*15+2,2,14);
     }
     for(const vx of [110,186]){
       R('#1d1b18',vx-2,10,28,16);R(room.win,vx,12,24,12);
       for(let bx=vx+4;bx<vx+22;bx+=5)R('#6e685f',bx,12,2,12);
     }
-  }else if(room.yard){
-    // Open Baghdad sky above the sun-baked mudbrick courtyard wall
-    R('#6ab8e8',0,0,320,18);
-    R('#8ed0f5',0,12,320,6);
-    // distant Baghdad dome & minaret silhouette on the left skyline
-    C('#b8945c',18,18,6);R('#b8945c',12,15,12,4);R('#d9b44a',17,10,2,3);
-    R('#b8945c',6,6,3,12);C('#d9b44a',7.5,5,1.5);
-    // crenellated parapet wall teeth
-    for(let x=0;x<320;x+=16)R(room.wall[0],x,14,10,5);
-    // turquoise glazed tile frieze along the top of the courtyard wall
-    R(room.acc,0,22,320,4);
-    for(let x=4;x<320;x+=12)R('#d9b44a',x,23,4,2);
-    // subtle sun-baked brick courses & blind decorative niches
-    R('#b89056',0,42,320,1);
-    for(const nx of [78,228]){
-      arch('#9c7640',nx,20,34,56);
-      arch('#b38b52',nx+2,16,35,55);
+  }else if(room.yard||room.village){
+    R('#6ab8e8',0,0,rw,20);
+    R('#8ed0f5',0,14,rw,6);
+    // Distant Baghdad mosque domes & minarets along the skyline
+    for(const sx of [18,170,340,510]){
+      if(sx<rw){
+        C('#b8945c',sx,20,7);R('#b8945c',sx-7,17,14,4);R('#d9b44a',sx-1,11,2,3);
+        R('#b8945c',sx-13,7,3,13);C('#d9b44a',sx-11.5,6,1.5);
+      }
     }
-    // hanging brass courtyard lanterns
-    for(const lx of [15,301]){
-      R('#2a1a10',lx+1,18,1,6);
-      R('#d9b44a',lx,24,4,6);
-      C('#ffe27a',lx+2,27,1.5);
+    for(let x=0;x<rw;x+=16)R(room.wall[0],x,16,10,5);
+    R(room.acc,0,24,rw,4);
+    for(let x=4;x<rw;x+=12)R('#d9b44a',x,25,4,2);
+    R('#b89056',0,44,rw,1);
+    if(room.yard){
+      for(const nx of [78,228]){arch('#9c7640',nx,20,34,56);arch('#b38b52',nx+2,16,35,55)}
+      for(const lx of [15,301]){R('#2a1a10',lx+1,18,1,6);R('#d9b44a',lx,24,4,6);C('#ffe27a',lx+2,27,1.5)}
     }
   }else{
-    for(let x=6;x<320;x+=14){R(room.acc,x+2,6,2,6);R(room.acc,x,8,6,2)}
-    R(room.acc,0,18,320,2);R(room.acc,0,66,320,2);
+    for(let x=6;x<rw;x+=14){R(room.acc,x+2,6,2,6);R(room.acc,x,8,6,2)}
+    R(room.acc,0,18,rw,2);R(room.acc,0,66,rw,2);
     for(const wx of [74,222]){
       arch(room.wall[1],wx-3,30,36,60);arch(room.win,wx,24,38,58);
       R('#e8dcb8',wx+11,38,2,20);R('#e8dcb8',wx,46,24,2);R('#e8dcb8',wx+4,32,16,2);
     }
   }
-  // horseshoe-arch doorways to the other rooms
+  // horseshoe-arch doorways
   ctx.font='bold 8px "Courier New",monospace';ctx.textBaseline='top';
   for(const d of doors){
     arch('#d9b44a',d.x-3,d.w+6,44,70);arch('#241408',d.x,d.w,44,70);
@@ -474,7 +597,15 @@ function draw(){
   for(const o of sorted)if(o.y+o.h<=P.y)drawObj(o);
   drawPlayer();
   for(const o of sorted)if(o.y+o.h>P.y)drawObj(o);
-  if(banner>0){R('#000',8,206,226,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
+  ctx.restore();
+
+  // HUD & overlays (screen-space)
+  if(banner>0){R('#000',8,206,236,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
+  if(room.village){
+    R('rgba(0,0,0,0.65)',244,4,72,14);
+    ctx.font='bold 9px "Courier New",monospace';ctx.fillStyle='#ffd25a';
+    ctx.fillText(musicOn?'OUD: ON [N]':'OUD: OFF [N]',248,7);
+  }
   if(dlg){
     R('#fff',16,150,288,80);R('#000',20,154,280,72);
     ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New",monospace';ctx.textBaseline='top';
