@@ -20,11 +20,11 @@ canvas{width:min(96vw,640px);aspect-ratio:4/3;image-rendering:pixelated;border:2
 </head>
 <body>
 <canvas id="c" width="320" height="240"></canvas>
-<div class="hint">Arrow keys / WASD: move &nbsp;â€¢&nbsp; Z / Enter: interact &nbsp;â€¢&nbsp; Top doors: change room &nbsp;â€¢&nbsp; 1-4: warp &nbsp;â€¢&nbsp; Esc: map &nbsp;â€¢&nbsp; Diagonals work like Undertale</div>
+<div class="hint">Arrow keys / WASD: move &nbsp;&bull;&nbsp; Z / Enter: interact &nbsp;&bull;&nbsp; Top doors: change room &nbsp;&bull;&nbsp; 1-5: warp &nbsp;&bull;&nbsp; Esc: map &nbsp;&bull;&nbsp; Diagonals work like Undertale</div>
 <div class="touch">
   <div class="pad">
-    <span></span><button data-k="ArrowUp">â–²</button><span></span>
-    <button data-k="ArrowLeft">â—€</button><button data-k="ArrowDown">â–¼</button><button data-k="ArrowRight">â–¶</button>
+    <span></span><button data-k="ArrowUp">&#9650;</button><span></span>
+    <button data-k="ArrowLeft">&#9664;</button><button data-k="ArrowDown">&#9660;</button><button data-k="ArrowRight">&#9654;</button>
   </div>
   <div style="display:flex;flex-direction:column;gap:6px"><button class="act" data-k="z">Z</button><button class="act" data-k="Escape">Map</button></div>
 </div>
@@ -53,8 +53,8 @@ document.querySelectorAll('[data-k]').forEach(b=>{
 });
 
 // ---- Baghdad, c. 800 CE: a family house around a courtyard ----
-const NAMES={1:'Kitchen',2:'Yard',3:'Living',4:'My Room'};
-const TITLES={1:'The Kitchen',2:'The Courtyard',3:'The Majlis (Living Room)',4:'Your Room'};
+const NAMES={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Cellar'};
+const TITLES={1:'The Kitchen',2:'The Courtyard',3:'The Majlis (Living Room)',4:'Your Room',5:'The Basement (Sirdab)'};
 const ROOMS={
  1:{floor:['#a8683a','#9a5c32'],wall:['#e0c896','#c4a56c'],acc:'#2f7a86',win:'#16304a',
   deco:[{k:'rug',x:92,y:118,w:100,h:80,c:['#7a1f2f','#d9b44a','#2f7a86']}],
@@ -70,11 +70,22 @@ const ROOMS={
  4:{floor:['#8a6a48','#7d5f3f'],wall:['#3a8a94','#2a6a74'],acc:'#d9b44a',win:'#16304a',
   deco:[{k:'rug',x:116,y:112,w:100,h:58,c:['#a33b2b','#d9b44a','#2f6f78']}],
   objs:[{k:'bed',x:236,y:98,w:70,h:44},{k:'chest',x:20,y:100,w:36,h:26},{k:'lamp',x:26,y:190,w:14,h:16},
-   {k:'desk',x:100,y:192,w:64,h:26,talk:'* Your scrolls and reed pen.\n  You practice calligraphy.'}]}
+   {k:'desk',x:100,y:192,w:64,h:26,talk:'* Your scrolls and reed pen.\n  You practice calligraphy.'}]},
+ 5:{basement:true,floor:['#4e4a44','#433f3a'],wall:['#35322e','#262420'],acc:'#7a6a52',win:'#0d1117',
+  deco:[{k:'mat',x:104,y:126,w:112,h:66,c:['#8a7248','#6b5634']}],
+  objs:[
+   {k:'barrel',x:22,y:96,w:24,h:28,talk:'* Oak barrels packed with cured\n  dates from Basra.'},
+   {k:'barrel',x:50,y:96,w:24,h:28},
+   {k:'amphora_rack',x:224,y:96,w:72,h:32,talk:'* Clay amphorae of olive oil,\n  rosewater, and vinegar.\n* Cool even in summer heat.'},
+   {k:'crate',x:22,y:184,w:34,h:28,talk:'* Heavy cedar crates bound with\n  iron straps.'},
+   {k:'crate',x:60,y:190,w:30,h:24},
+   {k:'brazier',x:268,y:186,w:22,h:24,talk:'* Glowing embers ward off the\n  damp chill of the sirdab.'},
+   {k:'astrolabe_table',x:132,y:144,w:56,h:30,talk:'* Your father\'s brass astrolabe\n  and star charts rest here,\n  safe from the midday sun.'}
+  ]}
 };
 const BORDER=[{x:0,y:0,w:320,h:70},{x:0,y:230,w:320,h:10},{x:0,y:0,w:10,h:240},{x:310,y:0,w:10,h:240}];
-function doorsOf(id){return [1,2,3,4].filter(i=>i!==id).map((to,k)=>({x:40+k*100,y:70,w:40,h:6,to}))}
-let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null;
+function doorsOf(id){return [1,2,3,4,5].filter(i=>i!==id).map((to,k)=>({x:26+k*76,y:70,w:40,h:6,to}))}
+let cur=1,room=ROOMS[1],doors=doorsOf(1),objs=room.objs,banner=90,dlg=null,T=null,gTick=0;
 const P={x:160,y:206,dir:'d',frame:0,tick:0,moving:false};
 function setRoom(id,from){
   cur=id;room=ROOMS[id];doors=doorsOf(id);objs=room.objs;
@@ -101,9 +112,10 @@ function talkAhead(){
   else f={x:b.x+b.w,y:b.y-6,w:14,h:b.h+8};
   return objs.find(o=>o.talk&&hit(f,o));
 }
-addEventListener('keydown',e=>{const n=+e.key;if(n>=1&&n<=4&&!T&&!mapOpen&&n!==cur)T={f:0,to:n,from:cur}});
+addEventListener('keydown',e=>{const n=+e.key;if(n>=1&&n<=5&&!T&&!mapOpen&&n!==cur)T={f:0,to:n,from:cur}});
 
 function update(){
+  gTick++;
   if(banner>0)banner--;
   if(mapPress){mapPress=false;if(!T&&!dlg)mapOpen=!mapOpen}
   if(mapOpen){interact=false;P.moving=false;return}
@@ -158,7 +170,7 @@ function drawPlayer(){
   else{
     R(turb,sx+1,sy,14,6);R('#e0d8c2',sx+1,sy+3,14,1);R(turb,sx+2,sy-1,12,2);
     R(dark,sx+2,sy+5,2,4);R(dark,sx+12,sy+5,2,4); // hair at the sides
-    if(P.dir==='l'){R(turb,sx+9,sy+5,6,8);R(skin,sx+9,sy+5,0,0)}
+    if(P.dir==='l'){R(turb,sx+9,sy+5,6,8)}
     if(P.dir==='r'){R(turb,sx+1,sy+5,6,8)}
   }
   if(P.dir==='d'){R(dark,sx+4,sy+7,3,1);R(dark,sx+9,sy+7,3,1);R(dark,sx+5,sy+9,1,2);R(dark,sx+10,sy+9,1,2);R('#9a5a38',sx+7,sy+11,2,1)}
@@ -176,7 +188,14 @@ function drawMom(o){
   R('#2a1a10',sx+5,sy+7,2,2);R('#2a1a10',sx+9,sy+7,2,2);R('#a0483a',sx+7,sy+11,2,1);
 }
 function drawRug(o){
-  const c=o.c;R(c[0],o.x,o.y,o.w,o.h);R(c[1],o.x+4,o.y+4,o.w-8,o.h-8);R(c[0],o.x+7,o.y+7,o.w-14,o.h-14);
+  const c=o.c;
+  if(o.k==='mat'){
+    R(c[0],o.x,o.y,o.w,o.h);
+    for(let y=o.y+4;y<o.y+o.h-2;y+=6)R(c[1],o.x+2,y,o.w-4,2);
+    for(let x=o.x+6;x<o.x+o.w-4;x+=12)R(c[1],x,o.y+2,2,o.h-4);
+    return;
+  }
+  R(c[0],o.x,o.y,o.w,o.h);R(c[1],o.x+4,o.y+4,o.w-8,o.h-8);R(c[0],o.x+7,o.y+7,o.w-14,o.h-14);
   const cx=o.x+o.w/2,cy=o.y+o.h/2;R(c[2],cx-14,cy-2,28,4);R(c[2],cx-2,cy-14,4,28);R(c[1],cx-5,cy-5,10,10);
   for(let i=o.x+10;i<o.x+o.w-10;i+=10){R(c[1],i,o.y+1,3,2);R(c[1],i,o.y+o.h-3,3,2)}
 }
@@ -202,23 +221,74 @@ function drawObj(o){
     C('#111',x+w-14,y+8,3);R('#4a2c14',x+w-24,y+3,1,9);break;
   case 'lamp':R('#c9a43a',x+3,y+8,8,8);R('#a88a2a',x+1,y+14,12,2);C('#ffd25a',x+7,y+5,3);break;
   case 'mom':drawMom(o);break;
+  // ---- Basement objects ----
+  case 'barrel':
+    E('#6b4222',x+w/2,y+h-12,w/2-1,12);
+    R('#7c4d28',x+2,y+5,w-4,h-15);
+    E('#8f5b32',x+w/2,y+5,w/2-2,4);
+    E('#523016',x+w/2,y+5,w/2-5,2);
+    R('#2b2b2b',x+1,y+9,w-2,2);
+    R('#2b2b2b',x+1,y+h-9,w-2,2);
+    break;
+  case 'amphora_rack':
+    R('#4a2c14',x,y+10,w,h-10);
+    R('#6b4423',x+2,y+12,w-4,4);
+    for(let i=0;i<3;i++){
+      const ax=x+13+i*23;
+      E('#b5683a',ax,y+18,8,10);
+      R('#b5683a',ax-3,y+4,6,6);
+      R('#944f27',ax-5,y+7,2,5);
+      R('#944f27',ax+3,y+7,2,5);
+      R('#d9b44a',ax-4,y+3,8,2);
+    }
+    break;
+  case 'crate':
+    R('#6b4928',x,y,w,h);
+    R('#855c34',x+2,y+2,w-4,h-9);
+    R('#52361c',x+2,y+Math.floor((h-9)/2),w-4,2);
+    R('#2e2e2e',x,y,w,2);
+    R('#2e2e2e',x,y+h-7,w,2);
+    break;
+  case 'brazier':
+    R('#2b2826',x+5,y+14,w-10,h-14);
+    R('#3d3834',x+2,y+8,w-4,7);
+    const flicker=(gTick>>2)%2;
+    E('#c93b18',x+w/2,y+8,7,3);
+    C('#ff8c24',x+w/2-2,y+5-flicker,3);
+    C('#ffd25a',x+w/2+1,y+4+flicker,2.5);
+    break;
+  case 'astrolabe_table':
+    R('#4a2c14',x+4,y+h-8,5,8);
+    R('#4a2c14',x+w-9,y+h-8,5,8);
+    R('#6e4726',x,y,w,h-6);
+    R('#8a5b32',x,y,w,3);
+    // parchment scroll
+    R('#e8dcb8',x+7,y+5,18,12);
+    R('#6b5a3c',x+10,y+8,11,1);
+    R('#6b5a3c',x+10,y+11,9,1);
+    // brass astrolabe ring
+    C('#d9b44a',x+w-16,y+11,6);
+    C('#6e4726',x+w-16,y+11,4);
+    R('#d9b44a',x+w-17,y+4,2,14);
+    R('#d9b44a',x+w-22,y+10,12,2);
+    break;
   }
 }
 function drawMap(){
   R('#000',0,0,320,240);R('#d9b44a',6,6,308,228);R('#1a1208',9,9,302,222);
-  ctx.textBaseline='top';ctx.textAlign='center';ctx.font='bold 14px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('MAP OF THE HOUSE',160,18);
-  const pos={1:[40,52],2:[190,52],3:[40,140],4:[190,140]},W=90,H=60;
-  const LBL={1:'Kitchen',2:'Yard',3:'Living Room',4:'Your Room'};
-  ctx.strokeStyle='#8a6a2a';ctx.lineWidth=2;
-  for(let a=1;a<=4;a++)for(let b=a+1;b<=4;b++){ctx.beginPath();ctx.moveTo(pos[a][0]+W/2,pos[a][1]+H/2);ctx.lineTo(pos[b][0]+W/2,pos[b][1]+H/2);ctx.stroke()}
-  for(let i=1;i<=4;i++){
+  ctx.textBaseline='top';ctx.textAlign='center';ctx.font='bold 13px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('MAP OF THE HOUSE',160,15);
+  const pos={1:[24,42],2:[122,42],3:[220,42],4:[64,126],5:[180,126]},W=76,H=50;
+  const LBL={1:'Kitchen',2:'Yard',3:'Living',4:'My Room',5:'Basement'};
+  ctx.strokeStyle='#8a6a2a';ctx.lineWidth=1.5;
+  for(let a=1;a<=5;a++)for(let b=a+1;b<=5;b++){ctx.beginPath();ctx.moveTo(pos[a][0]+W/2,pos[a][1]+H/2);ctx.lineTo(pos[b][0]+W/2,pos[b][1]+H/2);ctx.stroke()}
+  for(let i=1;i<=5;i++){
     const x=pos[i][0],y=pos[i][1],here=i===cur;
-    R(here?'#ffd25a':'#d9b44a',x-3,y-3,W+6,H+6);R(ROOMS[i].floor[0],x,y,W,H);R(ROOMS[i].wall[0],x,y,W,12);R(ROOMS[i].acc,x,y+12,W,2);
-    R('#241408',x+W/2-6,y+2,12,10);
-    ctx.font='bold 11px monospace';ctx.fillStyle='#fff';ctx.fillText(LBL[i],x+W/2,y+H/2-2);
-    if(here){C('#ff3b3b',x+8+(P.x/320)*(W-16),y+14+((P.y-70)/160)*(H-20),4);ctx.fillStyle='#ffd25a';ctx.font='bold 9px monospace';ctx.fillText('YOU ARE HERE',x+W/2,y+H+6)}
+    R(here?'#ffd25a':'#d9b44a',x-2,y-2,W+4,H+4);R(ROOMS[i].floor[0],x,y,W,H);R(ROOMS[i].wall[0],x,y,W,10);R(ROOMS[i].acc,x,y+10,W,2);
+    R('#241408',x+W/2-5,y+2,10,8);
+    ctx.font='bold 10px monospace';ctx.fillStyle='#fff';ctx.fillText(LBL[i],x+W/2,y+H/2-2);
+    if(here){C('#ff3b3b',x+6+(P.x/320)*(W-12),y+12+((P.y-70)/160)*(H-16),3.5);ctx.fillStyle='#ffd25a';ctx.font='bold 8px monospace';ctx.fillText('YOU ARE HERE',x+W/2,y+H+5)}
   }
-  ctx.font='bold 10px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('All rooms connect by their top doors',160,200);ctx.fillText('Esc / M: close',160,216);
+  ctx.font='bold 10px monospace';ctx.fillStyle='#d9b44a';ctx.fillText('All rooms connect by their top doors',160,198);ctx.fillText('Esc / M: close',160,214);
   ctx.textAlign='left';
 }
 function draw(){
@@ -226,15 +296,28 @@ function draw(){
   R(room.floor[0],10,70,300,160);
   for(let i=0;i<300;i+=20)for(let j=0;j<160;j+=20)if(((i+j)/20)%2===0)R(room.floor[1],10+i,70+j,20,20);
   for(const d of room.deco)drawRug(d);
-  // walls with a geometric band (arabesque-style stars)
+  // walls
   R(room.wall[0],0,0,320,70);R(room.wall[1],0,62,320,8);
   R(room.wall[0],0,230,320,10);R(room.wall[0],0,0,10,240);R(room.wall[0],310,0,10,240);
-  for(let x=6;x<320;x+=14){R(room.acc,x+2,6,2,6);R(room.acc,x,8,6,2)}
-  R(room.acc,0,18,320,2);R(room.acc,0,66,320,2);
-  // arched lattice windows
-  for(const wx of [96,196]){
-    arch(room.wall[1],wx-3,30,36,60);arch(room.win,wx,24,38,58);
-    R('#e8dcb8',wx+11,38,2,20);R('#e8dcb8',wx,46,24,2);R('#e8dcb8',wx+4,32,16,2);
+  if(room.basement){
+    // stone block mortar lines + high barred ventilation grates
+    for(let y=16;y<62;y+=15)R('#1d1b18',0,y,320,2);
+    for(let row=0;row<4;row++){
+      const off=(row%2)*18;
+      for(let x=off;x<320;x+=36)R('#1d1b18',x,row*15+2,2,14);
+    }
+    for(const vx of [110,186]){
+      R('#1d1b18',vx-2,10,28,16);R(room.win,vx,12,24,12);
+      for(let bx=vx+4;bx<vx+22;bx+=5)R('#6e685f',bx,12,2,12);
+    }
+  }else{
+    for(let x=6;x<320;x+=14){R(room.acc,x+2,6,2,6);R(room.acc,x,8,6,2)}
+    R(room.acc,0,18,320,2);R(room.acc,0,66,320,2);
+    // arched lattice windows
+    for(const wx of [74,222]){
+      arch(room.wall[1],wx-3,30,36,60);arch(room.win,wx,24,38,58);
+      R('#e8dcb8',wx+11,38,2,20);R('#e8dcb8',wx,46,24,2);R('#e8dcb8',wx+4,32,16,2);
+    }
   }
   // horseshoe-arch doorways to the other rooms
   ctx.font='bold 8px "Courier New",monospace';ctx.textBaseline='top';
@@ -247,7 +330,7 @@ function draw(){
   for(const o of sorted)if(o.y+o.h<=P.y)drawObj(o);
   drawPlayer();
   for(const o of sorted)if(o.y+o.h>P.y)drawObj(o);
-  if(banner>0){R('#000',8,206,200,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
+  if(banner>0){R('#000',8,206,214,20);ctx.font='bold 12px "Courier New",monospace';ctx.fillStyle='#fff';ctx.fillText(TITLES[cur],14,210)}
   if(dlg){
     R('#fff',16,150,288,80);R('#000',20,154,280,72);
     ctx.fillStyle='#fff';ctx.font='bold 14px "Courier New",monospace';ctx.textBaseline='top';
